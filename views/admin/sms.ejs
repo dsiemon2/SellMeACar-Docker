@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SMS Settings - Ford Auto Sales Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    .sidebar { min-height: 100vh; background: #2c3e50; }
+    .sidebar .nav-link { color: rgba(255,255,255,0.8); padding: 0.75rem 1rem; }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active { color: #fff; background: rgba(255,255,255,0.1); }
+    .sidebar .nav-link i { margin-right: 0.5rem; }
+    .main-content { background: #f8f9fa; min-height: 100vh; }
+    .nav-divider { border-top: 1px solid rgba(255,255,255,0.2); margin: 0.5rem 0; }
+    .nav-section { color: rgba(255,255,255,0.5); font-size: 0.75rem; padding: 0.5rem 1rem; text-transform: uppercase; }
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <%- include('_sidebar', { token, active: 'sms' }) %>
+
+      <main class="col-md-10 ms-sm-auto main-content p-4">
+        <h2 class="mb-4"><i class="bi bi-chat-dots text-primary me-2"></i>SMS Settings</h2>
+
+        <div class="toast-container"></div>
+
+        <form id="smsForm">
+          <!-- Provider Configuration -->
+          <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+              <h5 class="mb-0"><i class="bi bi-gear me-2"></i>SMS Provider</h5>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">Provider</label>
+                    <select class="form-select" id="smsProvider">
+                      <option value="twilio" <%= config?.smsProvider === 'twilio' ? 'selected' : '' %>>Twilio</option>
+                      <option value="vonage" <%= config?.smsProvider === 'vonage' ? 'selected' : '' %>>Vonage (Nexmo)</option>
+                      <option value="messagebird" <%= config?.smsProvider === 'messagebird' ? 'selected' : '' %>>MessageBird</option>
+                      <option value="plivo" <%= config?.smsProvider === 'plivo' ? 'selected' : '' %>>Plivo</option>
+                    </select>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Account SID / API Key</label>
+                    <input type="text" class="form-control" id="smsAccountSid" value="<%= config?.smsAccountSid || '' %>">
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Auth Token / API Secret</label>
+                    <input type="password" class="form-control" id="smsAuthToken" value="<%= config?.smsAuthToken || '' %>">
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">Phone Number (From)</label>
+                    <input type="text" class="form-control" id="smsFromNumber" value="<%= config?.smsFromNumber || '' %>" placeholder="+1234567890">
+                  </div>
+                  <div class="form-check mb-3">
+                    <input type="checkbox" class="form-check-input" id="smsEnabled" <%= config?.smsEnabled ? 'checked' : '' %>>
+                    <label class="form-check-label">Enable SMS Notifications</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- SMS Templates -->
+          <div class="card mb-4">
+            <div class="card-header bg-info text-white">
+              <h5 class="mb-0"><i class="bi bi-file-text me-2"></i>SMS Templates</h5>
+            </div>
+            <div class="card-body">
+              <div class="mb-3">
+                <label class="form-label">Welcome Message</label>
+                <textarea class="form-control" id="smsWelcome" rows="2"><%= config?.smsWelcome || 'Welcome to Ford Auto Sales! How can we help you find your perfect vehicle today?' %></textarea>
+                <div class="form-text">Sent when a customer initiates contact</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Lead Follow-up</label>
+                <textarea class="form-control" id="smsFollowUp" rows="2"><%= config?.smsFollowUp || 'Hi {name}, thanks for your interest in the {vehicle}! Ready to schedule a test drive?' %></textarea>
+                <div class="form-text">Variables: {name}, {vehicle}, {price}, {dealership}</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Appointment Reminder</label>
+                <textarea class="form-control" id="smsReminder" rows="2"><%= config?.smsReminder || 'Reminder: Your appointment at Ford Auto Sales is tomorrow at {time}. See you then!' %></textarea>
+                <div class="form-text">Variables: {name}, {date}, {time}, {dealership}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Notification Settings -->
+          <div class="card mb-4">
+            <div class="card-header bg-warning text-dark">
+              <h5 class="mb-0"><i class="bi bi-bell me-2"></i>Notification Triggers</h5>
+            </div>
+            <div class="card-body">
+              <div class="form-check mb-2">
+                <input type="checkbox" class="form-check-input" id="notifyNewLead" <%= config?.notifyNewLead ? 'checked' : '' %>>
+                <label class="form-check-label">Notify on new lead</label>
+              </div>
+              <div class="form-check mb-2">
+                <input type="checkbox" class="form-check-input" id="notifyAppointment" <%= config?.notifyAppointment ? 'checked' : '' %>>
+                <label class="form-check-label">Send appointment reminders</label>
+              </div>
+              <div class="form-check mb-2">
+                <input type="checkbox" class="form-check-input" id="notifySale" <%= config?.notifySale ? 'checked' : '' %>>
+                <label class="form-check-label">Notify on completed sale</label>
+              </div>
+              <div class="mb-3 mt-3">
+                <label class="form-label">Staff Notification Number</label>
+                <input type="text" class="form-control" id="staffNotifyNumber" value="<%= config?.staffNotifyNumber || '' %>" placeholder="+1234567890">
+                <div class="form-text">Receives notifications when leads come in</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary" data-bs-toggle="tooltip" title="Save SMS settings">
+              <i class="bi bi-save me-2"></i>Save Settings
+            </button>
+            <button type="button" class="btn btn-outline-secondary" onclick="testSMS()" data-bs-toggle="tooltip" title="Send test SMS">
+              <i class="bi bi-send me-2"></i>Send Test SMS
+            </button>
+          </div>
+        </form>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const token = '<%= token %>';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+      tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
+    });
+
+    function showToast(message, type = 'success') {
+      const container = document.querySelector('.toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast show align-items-center text-bg-${type} border-0`;
+      toast.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    document.getElementById('smsForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = {
+        smsProvider: document.getElementById('smsProvider').value,
+        smsAccountSid: document.getElementById('smsAccountSid').value,
+        smsAuthToken: document.getElementById('smsAuthToken').value,
+        smsFromNumber: document.getElementById('smsFromNumber').value,
+        smsEnabled: document.getElementById('smsEnabled').checked,
+        smsWelcome: document.getElementById('smsWelcome').value,
+        smsFollowUp: document.getElementById('smsFollowUp').value,
+        smsReminder: document.getElementById('smsReminder').value,
+        notifyNewLead: document.getElementById('notifyNewLead').checked,
+        notifyAppointment: document.getElementById('notifyAppointment').checked,
+        notifySale: document.getElementById('notifySale').checked,
+        staffNotifyNumber: document.getElementById('staffNotifyNumber').value
+      };
+
+      try {
+        const res = await fetch(`/admin/sms?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (res.ok) showToast('SMS settings saved!');
+        else showToast('Failed to save', 'danger');
+      } catch (err) {
+        showToast('Error saving', 'danger');
+      }
+    });
+
+    async function testSMS() {
+      const phone = prompt('Enter phone number to send test SMS:');
+      if (!phone) return;
+
+      try {
+        const res = await fetch(`/admin/sms/test?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone })
+        });
+        const result = await res.json();
+        if (result.success) {
+          showToast('Test SMS sent!');
+        } else {
+          showToast('Failed: ' + (result.error || 'Unknown error'), 'danger');
+        }
+      } catch (err) {
+        showToast('Error sending test', 'danger');
+      }
+    }
+  </script>
+</body>
+</html>

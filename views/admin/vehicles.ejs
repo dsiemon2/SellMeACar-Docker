@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vehicle Inventory - Auto Sales Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    .sidebar { min-height: 100vh; background: #2c3e50; }
+    .sidebar .nav-link { color: rgba(255,255,255,0.8); padding: 0.75rem 1rem; }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active { color: #fff; background: rgba(255,255,255,0.1); }
+    .sidebar .nav-link i { margin-right: 0.5rem; }
+    .main-content { background: #f8f9fa; min-height: 100vh; }
+    .nav-divider { border-top: 1px solid rgba(255,255,255,0.2); margin: 0.5rem 0; }
+    .nav-section { color: rgba(255,255,255,0.5); font-size: 0.75rem; padding: 0.5rem 1rem; text-transform: uppercase; }
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+    .bulk-actions { display: none; background: #e3f2fd; padding: 0.75rem 1rem; border-radius: 8px; }
+    .bulk-actions.show { display: flex; }
+    .row-checkbox { cursor: pointer; }
+    tr.selected { background-color: #e3f2fd !important; }
+    .vehicle-thumb { width: 60px; height: 45px; object-fit: cover; border-radius: 4px; background: #dee2e6; }
+    .status-badge { font-size: 0.75rem; }
+    .price-cell { font-weight: 600; }
+    .filter-bar { background: white; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <%- include('_sidebar', { token, active: 'vehicles' }) %>
+
+      <main class="col-md-10 ms-sm-auto main-content p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h2><i class="bi bi-car-front text-primary me-2"></i>Vehicle Inventory</h2>
+          <div>
+            <button class="btn btn-outline-primary me-2" data-bs-toggle="modal" data-bs-target="#importModal" title="Import vehicles from CSV/Excel">
+              <i class="bi bi-upload me-1"></i>Import
+            </button>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#vehicleModal" onclick="openAddVehicle()" title="Add a new vehicle">
+              <i class="bi bi-plus-lg me-1"></i>Add Vehicle
+            </button>
+          </div>
+        </div>
+
+        <div class="toast-container"></div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+          <div class="row g-3">
+            <div class="col-md-2">
+              <select class="form-select form-select-sm" id="filterMake">
+                <option value="">All Makes</option>
+                <% const makes = [...new Set(vehicles.map(v => v.make))].sort(); %>
+                <% makes.forEach(make => { %>
+                  <option value="<%= make %>"><%= make %></option>
+                <% }); %>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <select class="form-select form-select-sm" id="filterBodyStyle">
+                <option value="">All Body Styles</option>
+                <option value="sedan">Sedan</option>
+                <option value="suv">SUV</option>
+                <option value="truck">Truck</option>
+                <option value="coupe">Coupe</option>
+                <option value="convertible">Convertible</option>
+                <option value="van">Van</option>
+                <option value="hatchback">Hatchback</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <select class="form-select form-select-sm" id="filterCondition">
+                <option value="">All Conditions</option>
+                <option value="new">New</option>
+                <option value="certified_preowned">Certified Pre-Owned</option>
+                <option value="used">Used</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <select class="form-select form-select-sm" id="filterStatus">
+                <option value="">All Status</option>
+                <option value="available">Available</option>
+                <option value="pending">Pending</option>
+                <option value="reserved">Reserved</option>
+                <option value="sold">Sold</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <input type="text" class="form-control form-control-sm" id="searchInput" placeholder="Search vehicles...">
+            </div>
+            <div class="col-md-1">
+              <button class="btn btn-sm btn-outline-secondary w-100" onclick="clearFilters()" data-bs-toggle="tooltip" title="Clear all filters">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bulk Actions Toolbar -->
+        <div class="bulk-actions mb-3 align-items-center justify-content-between" id="bulkActions">
+          <div>
+            <span class="me-3"><strong id="selectedCount">0</strong> selected</span>
+            <button class="btn btn-sm btn-outline-danger me-2" onclick="bulkDelete()" data-bs-toggle="tooltip" title="Delete selected vehicles">
+              <i class="bi bi-trash me-1"></i>Delete
+            </button>
+            <button class="btn btn-sm btn-outline-success me-2" onclick="bulkUpdateStatus('available')" data-bs-toggle="tooltip" title="Mark selected as available">
+              <i class="bi bi-check-circle me-1"></i>Available
+            </button>
+            <button class="btn btn-sm btn-outline-warning" onclick="bulkUpdateStatus('sold')" data-bs-toggle="tooltip" title="Mark selected as sold">
+              <i class="bi bi-cart-check me-1"></i>Sold
+            </button>
+          </div>
+          <button class="btn btn-sm btn-link" onclick="clearSelection()">Clear Selection</button>
+        </div>
+
+        <!-- Vehicles Table -->
+        <div class="card">
+          <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 40px;">
+                    <input type="checkbox" class="form-check-input" id="selectAll" data-bs-toggle="tooltip" title="Select all">
+                  </th>
+                  <th style="width: 80px;">Image</th>
+                  <th>Vehicle</th>
+                  <th>Body</th>
+                  <th>Color</th>
+                  <th>Mileage</th>
+                  <th>Condition</th>
+                  <th class="text-end">Price</th>
+                  <th>Status</th>
+                  <th style="width: 100px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody">
+                <% if (vehicles.length === 0) { %>
+                  <tr class="no-data-row">
+                    <td colspan="10" class="text-center py-5 text-muted">
+                      <i class="bi bi-car-front" style="font-size: 3rem;"></i>
+                      <p class="mt-3 mb-0">No vehicles in inventory yet.</p>
+                      <button class="btn btn-primary mt-3" data-bs-toggle="modal" data-bs-target="#vehicleModal" onclick="openAddVehicle()">
+                        <i class="bi bi-plus-lg me-1"></i>Add Your First Vehicle
+                      </button>
+                    </td>
+                  </tr>
+                <% } else { %>
+                  <% vehicles.forEach(vehicle => { %>
+                    <tr data-id="<%= vehicle.id %>" data-make="<%= vehicle.make %>" data-body="<%= vehicle.bodyStyle %>" data-condition="<%= vehicle.condition %>" data-status="<%= vehicle.status %>">
+                      <td>
+                        <input type="checkbox" class="form-check-input row-checkbox" value="<%= vehicle.id %>">
+                      </td>
+                      <td>
+                        <% const images = JSON.parse(vehicle.images || '[]'); %>
+                        <% if (images.length > 0) { %>
+                          <img src="<%= images[0] %>" alt="<%= vehicle.make %> <%= vehicle.model %>" class="vehicle-thumb">
+                        <% } else { %>
+                          <div class="vehicle-thumb d-flex align-items-center justify-content-center">
+                            <i class="bi bi-car-front text-muted"></i>
+                          </div>
+                        <% } %>
+                      </td>
+                      <td>
+                        <strong><%= vehicle.year %> <%= vehicle.make %> <%= vehicle.model %></strong>
+                        <% if (vehicle.trim) { %><br><small class="text-muted"><%= vehicle.trim %></small><% } %>
+                        <% if (vehicle.stockNumber) { %><br><small class="text-muted">Stock: <%= vehicle.stockNumber %></small><% } %>
+                      </td>
+                      <td><%= vehicle.bodyStyle.charAt(0).toUpperCase() + vehicle.bodyStyle.slice(1) %></td>
+                      <td><%= vehicle.exteriorColor %></td>
+                      <td><%= vehicle.mileage.toLocaleString() %></td>
+                      <td>
+                        <% if (vehicle.condition === 'new') { %>
+                          <span class="badge bg-success status-badge">New</span>
+                        <% } else if (vehicle.condition === 'certified_preowned') { %>
+                          <span class="badge bg-info status-badge">CPO</span>
+                        <% } else { %>
+                          <span class="badge bg-secondary status-badge">Used</span>
+                        <% } %>
+                      </td>
+                      <td class="text-end price-cell">
+                        <% if (vehicle.specialPrice) { %>
+                          <span class="text-decoration-line-through text-muted">$<%= vehicle.salePrice.toLocaleString() %></span><br>
+                          <span class="text-success">$<%= vehicle.specialPrice.toLocaleString() %></span>
+                        <% } else { %>
+                          $<%= vehicle.salePrice.toLocaleString() %>
+                        <% } %>
+                      </td>
+                      <td>
+                        <% if (vehicle.status === 'available') { %>
+                          <span class="badge bg-success status-badge">Available</span>
+                        <% } else if (vehicle.status === 'pending') { %>
+                          <span class="badge bg-warning status-badge">Pending</span>
+                        <% } else if (vehicle.status === 'reserved') { %>
+                          <span class="badge bg-info status-badge">Reserved</span>
+                        <% } else { %>
+                          <span class="badge bg-secondary status-badge">Sold</span>
+                        <% } %>
+                        <% if (vehicle.featured) { %>
+                          <span class="badge bg-primary status-badge" data-bs-toggle="tooltip" title="Featured vehicle"><i class="bi bi-star-fill"></i></span>
+                        <% } %>
+                      </td>
+                      <td>
+                        <button class="btn btn-sm btn-outline-primary me-1" onclick="editVehicle('<%= vehicle.id %>')" data-bs-toggle="tooltip" title="Edit vehicle">
+                          <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteVehicle('<%= vehicle.id %>')" data-bs-toggle="tooltip" title="Delete vehicle">
+                          <i class="bi bi-trash"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  <% }); %>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination Footer -->
+          <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+            <div class="text-muted small">Showing <span id="showingStart">1</span>-<span id="showingEnd">10</span> of <span id="totalRows">0</span></div>
+            <nav>
+              <ul class="pagination pagination-sm mb-0" id="pagination">
+                <li class="page-item" id="prevPage">
+                  <a class="page-link" href="#" onclick="changePage(-1); return false;">
+                    <i class="bi bi-chevron-left"></i>
+                  </a>
+                </li>
+                <li class="page-item" id="nextPage">
+                  <a class="page-link" href="#" onclick="changePage(1); return false;">
+                    <i class="bi bi-chevron-right"></i>
+                  </a>
+                </li>
+              </ul>
+            </nav>
+            <select class="form-select form-select-sm" id="pageSize" style="width: auto;">
+              <option value="10">10 / page</option>
+              <option value="25">25 / page</option>
+              <option value="50">50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Vehicle Add/Edit Modal -->
+  <div class="modal fade" id="vehicleModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="vehicleModalTitle"><i class="bi bi-car-front me-2"></i>Add Vehicle</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="vehicleForm">
+            <input type="hidden" id="vehicleId">
+            <div class="row">
+              <div class="col-md-6">
+                <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-info-circle me-2"></i>Basic Information</h6>
+                <div class="row">
+                  <div class="col-md-4 mb-3">
+                    <label class="form-label">Year *</label>
+                    <input type="number" class="form-control" id="vYear" min="1900" max="2030" required>
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label class="form-label">Make *</label>
+                    <input type="text" class="form-control" id="vMake" required placeholder="Ford, Chevrolet, Tesla...">
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label class="form-label">Model *</label>
+                    <input type="text" class="form-control" id="vModel" required placeholder="F-150, Mustang...">
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Trim</label>
+                    <input type="text" class="form-control" id="vTrim" placeholder="XLT, Sport, Limited...">
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Body Style</label>
+                    <select class="form-select" id="vBodyStyle">
+                      <option value="sedan">Sedan</option>
+                      <option value="suv">SUV</option>
+                      <option value="truck">Truck</option>
+                      <option value="coupe">Coupe</option>
+                      <option value="convertible">Convertible</option>
+                      <option value="van">Van</option>
+                      <option value="hatchback">Hatchback</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">VIN</label>
+                    <input type="text" class="form-control" id="vVin" placeholder="Vehicle Identification Number">
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Stock Number</label>
+                    <input type="text" class="form-control" id="vStockNumber" placeholder="Dealer stock number">
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Exterior Color *</label>
+                    <input type="text" class="form-control" id="vExteriorColor" required placeholder="Oxford White, Magnetic Gray...">
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Interior Color</label>
+                    <input type="text" class="form-control" id="vInteriorColor" placeholder="Black, Tan, Gray...">
+                  </div>
+                </div>
+
+                <h6 class="border-bottom pb-2 mb-3 mt-4"><i class="bi bi-speedometer me-2"></i>Specifications</h6>
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Engine</label>
+                    <input type="text" class="form-control" id="vEngine" placeholder="3.5L V6, Electric...">
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Transmission</label>
+                    <select class="form-select" id="vTransmission">
+                      <option value="automatic">Automatic</option>
+                      <option value="manual">Manual</option>
+                      <option value="cvt">CVT</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Drivetrain</label>
+                    <select class="form-select" id="vDrivetrain">
+                      <option value="fwd">Front-Wheel Drive</option>
+                      <option value="rwd">Rear-Wheel Drive</option>
+                      <option value="awd">All-Wheel Drive</option>
+                      <option value="4wd">4-Wheel Drive</option>
+                    </select>
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Fuel Type</label>
+                    <select class="form-select" id="vFuelType">
+                      <option value="gasoline">Gasoline</option>
+                      <option value="diesel">Diesel</option>
+                      <option value="hybrid">Hybrid</option>
+                      <option value="electric">Electric</option>
+                      <option value="plug_in_hybrid">Plug-in Hybrid</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-md-4 mb-3">
+                    <label class="form-label">MPG City</label>
+                    <input type="number" class="form-control" id="vMpgCity" min="0">
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label class="form-label">MPG Highway</label>
+                    <input type="number" class="form-control" id="vMpgHighway" min="0">
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label class="form-label">Mileage</label>
+                    <input type="number" class="form-control" id="vMileage" min="0" value="0">
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-currency-dollar me-2"></i>Pricing & Status</h6>
+                <div class="row">
+                  <div class="col-md-4 mb-3">
+                    <label class="form-label">MSRP</label>
+                    <input type="number" class="form-control" id="vMsrp" step="0.01" min="0">
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label class="form-label">Sale Price *</label>
+                    <input type="number" class="form-control" id="vSalePrice" step="0.01" min="0" required>
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label class="form-label">Special Price</label>
+                    <input type="number" class="form-control" id="vSpecialPrice" step="0.01" min="0" placeholder="Promo price">
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Condition</label>
+                    <select class="form-select" id="vCondition">
+                      <option value="new">New</option>
+                      <option value="certified_preowned">Certified Pre-Owned</option>
+                      <option value="used">Used</option>
+                    </select>
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Status</label>
+                    <select class="form-select" id="vStatus">
+                      <option value="available">Available</option>
+                      <option value="pending">Pending</option>
+                      <option value="reserved">Reserved</option>
+                      <option value="sold">Sold</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="mb-3">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="vFeatured">
+                    <label class="form-check-label" for="vFeatured">
+                      <i class="bi bi-star-fill text-warning me-1"></i>Featured Vehicle
+                    </label>
+                  </div>
+                </div>
+
+                <h6 class="border-bottom pb-2 mb-3 mt-4"><i class="bi bi-list-check me-2"></i>Features</h6>
+                <div class="mb-3">
+                  <label class="form-label">Vehicle Features</label>
+                  <textarea class="form-control" id="vFeatures" rows="4" placeholder='["Leather Seats", "Sunroof", "Navigation", "Backup Camera", "Bluetooth"]'></textarea>
+                  <div class="form-text">JSON array of features or one feature per line.</div>
+                </div>
+
+                <h6 class="border-bottom pb-2 mb-3 mt-4"><i class="bi bi-card-image me-2"></i>Images</h6>
+                <div class="mb-3">
+                  <label class="form-label">Image URLs</label>
+                  <textarea class="form-control" id="vImages" rows="3" placeholder='["https://example.com/image1.jpg", "https://example.com/image2.jpg"]'></textarea>
+                  <div class="form-text">JSON array of image URLs. First image is the main photo.</div>
+                </div>
+
+                <h6 class="border-bottom pb-2 mb-3 mt-4"><i class="bi bi-file-text me-2"></i>Description</h6>
+                <div class="mb-3">
+                  <textarea class="form-control" id="vDescription" rows="4" placeholder="Enter vehicle description, highlights, and selling points..."></textarea>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="saveVehicle()" data-bs-toggle="tooltip" title="Save vehicle">
+            <i class="bi bi-save me-1"></i>Save Vehicle
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import Modal -->
+  <div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Import Vehicles</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted">Import vehicles from a CSV or Excel file.</p>
+
+          <div class="mb-3">
+            <label class="form-label">Select File</label>
+            <input type="file" class="form-control" id="importFile" accept=".csv,.xlsx,.xls">
+          </div>
+
+          <div class="alert alert-info">
+            <strong><i class="bi bi-info-circle me-1"></i>Required Columns:</strong>
+            <ul class="mb-0 mt-2">
+              <li>year, make, model, exteriorColor, salePrice</li>
+            </ul>
+            <strong class="mt-2 d-block">Optional Columns:</strong>
+            <ul class="mb-0 mt-1">
+              <li>trim, bodyStyle, vin, stockNumber, interiorColor, mileage, condition, msrp, specialPrice, engine, transmission, drivetrain, fuelType, mpgCity, mpgHighway, features, images, description, status, featured</li>
+            </ul>
+          </div>
+
+          <div class="mb-3">
+            <a href="#" onclick="downloadTemplate(); return false;" class="btn btn-outline-secondary btn-sm">
+              <i class="bi bi-download me-1"></i>Download Template
+            </a>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="importVehicles()" data-bs-toggle="tooltip" title="Import vehicles">
+            <i class="bi bi-upload me-1"></i>Import
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script>
+    const token = '<%= token %>';
+    let currentPage = 1;
+    let pageSize = 10;
+    let allRows = [];
+    let filteredRows = [];
+    let selectedRows = new Set();
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      // Initialize tooltips
+      const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+      tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
+
+      // Get all rows
+      allRows = Array.from(document.querySelectorAll('#tableBody tr:not(.no-data-row)'));
+      filteredRows = [...allRows];
+      updatePagination();
+
+      // Select All handler
+      document.getElementById('selectAll').addEventListener('change', function() {
+        const visibleCheckboxes = filteredRows
+          .filter((row, idx) => {
+            const start = (currentPage - 1) * pageSize;
+            const end = start + pageSize;
+            return idx >= start && idx < end;
+          })
+          .map(row => row.querySelector('.row-checkbox'));
+
+        visibleCheckboxes.forEach(cb => {
+          cb.checked = this.checked;
+          const row = cb.closest('tr');
+          if (this.checked) {
+            selectedRows.add(cb.value);
+            row.classList.add('selected');
+          } else {
+            selectedRows.delete(cb.value);
+            row.classList.remove('selected');
+          }
+        });
+        updateBulkActions();
+      });
+
+      // Row checkbox handler (delegated)
+      document.getElementById('tableBody').addEventListener('change', (e) => {
+        if (e.target.classList.contains('row-checkbox')) {
+          const row = e.target.closest('tr');
+          if (e.target.checked) {
+            selectedRows.add(e.target.value);
+            row.classList.add('selected');
+          } else {
+            selectedRows.delete(e.target.value);
+            row.classList.remove('selected');
+          }
+          updateBulkActions();
+        }
+      });
+
+      // Page size change
+      document.getElementById('pageSize').addEventListener('change', function() {
+        pageSize = parseInt(this.value);
+        currentPage = 1;
+        updatePagination();
+      });
+
+      // Filter handlers
+      ['filterMake', 'filterBodyStyle', 'filterCondition', 'filterStatus'].forEach(id => {
+        document.getElementById(id).addEventListener('change', applyFilters);
+      });
+      document.getElementById('searchInput').addEventListener('input', applyFilters);
+    });
+
+    function showToast(message, type = 'success') {
+      const container = document.querySelector('.toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast show align-items-center text-bg-${type} border-0`;
+      toast.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function updatePagination() {
+      const totalPages = Math.ceil(filteredRows.length / pageSize);
+      const start = (currentPage - 1) * pageSize;
+      const end = Math.min(start + pageSize, filteredRows.length);
+
+      // Hide all rows first
+      allRows.forEach(row => row.style.display = 'none');
+
+      // Show only filtered rows for current page
+      filteredRows.forEach((row, idx) => {
+        row.style.display = (idx >= start && idx < end) ? '' : 'none';
+      });
+
+      // Update info text
+      document.getElementById('showingStart').textContent = filteredRows.length > 0 ? start + 1 : 0;
+      document.getElementById('showingEnd').textContent = end;
+      document.getElementById('totalRows').textContent = filteredRows.length;
+
+      // Update prev/next buttons
+      document.getElementById('prevPage').classList.toggle('disabled', currentPage === 1);
+      document.getElementById('nextPage').classList.toggle('disabled', currentPage >= totalPages || totalPages === 0);
+
+      // Generate page numbers
+      const pagination = document.getElementById('pagination');
+      const pageItems = pagination.querySelectorAll('.page-number');
+      pageItems.forEach(item => item.remove());
+
+      const nextPageLi = document.getElementById('nextPage');
+      for (let i = 1; i <= Math.min(totalPages, 7); i++) {
+        const li = document.createElement('li');
+        li.className = `page-item page-number ${i === currentPage ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#" onclick="goToPage(${i}); return false;">${i}</a>`;
+        pagination.insertBefore(li, nextPageLi);
+      }
+    }
+
+    function changePage(delta) {
+      const totalPages = Math.ceil(filteredRows.length / pageSize);
+      currentPage = Math.max(1, Math.min(currentPage + delta, totalPages));
+      updatePagination();
+    }
+
+    function goToPage(page) {
+      currentPage = page;
+      updatePagination();
+    }
+
+    function updateBulkActions() {
+      const bulkActions = document.getElementById('bulkActions');
+      document.getElementById('selectedCount').textContent = selectedRows.size;
+      bulkActions.classList.toggle('show', selectedRows.size > 0);
+    }
+
+    function clearSelection() {
+      selectedRows.clear();
+      document.querySelectorAll('.row-checkbox').forEach(cb => {
+        cb.checked = false;
+        cb.closest('tr').classList.remove('selected');
+      });
+      document.getElementById('selectAll').checked = false;
+      updateBulkActions();
+    }
+
+    function applyFilters() {
+      const make = document.getElementById('filterMake').value.toLowerCase();
+      const body = document.getElementById('filterBodyStyle').value.toLowerCase();
+      const condition = document.getElementById('filterCondition').value.toLowerCase();
+      const status = document.getElementById('filterStatus').value.toLowerCase();
+      const search = document.getElementById('searchInput').value.toLowerCase();
+
+      filteredRows = allRows.filter(row => {
+        const rowMake = (row.dataset.make || '').toLowerCase();
+        const rowBody = (row.dataset.body || '').toLowerCase();
+        const rowCondition = (row.dataset.condition || '').toLowerCase();
+        const rowStatus = (row.dataset.status || '').toLowerCase();
+        const rowText = row.textContent.toLowerCase();
+
+        return (!make || rowMake === make) &&
+               (!body || rowBody === body) &&
+               (!condition || rowCondition === condition) &&
+               (!status || rowStatus === status) &&
+               (!search || rowText.includes(search));
+      });
+
+      currentPage = 1;
+      updatePagination();
+    }
+
+    function clearFilters() {
+      document.getElementById('filterMake').value = '';
+      document.getElementById('filterBodyStyle').value = '';
+      document.getElementById('filterCondition').value = '';
+      document.getElementById('filterStatus').value = '';
+      document.getElementById('searchInput').value = '';
+      filteredRows = [...allRows];
+      currentPage = 1;
+      updatePagination();
+    }
+
+    function openAddVehicle() {
+      document.getElementById('vehicleModalTitle').innerHTML = '<i class="bi bi-car-front me-2"></i>Add Vehicle';
+      document.getElementById('vehicleForm').reset();
+      document.getElementById('vehicleId').value = '';
+      document.getElementById('vYear').value = new Date().getFullYear();
+      document.getElementById('vFeatures').value = '[]';
+      document.getElementById('vImages').value = '[]';
+    }
+
+    async function editVehicle(id) {
+      try {
+        const res = await fetch(`/admin/vehicles/${id}?token=${token}`);
+        const vehicle = await res.json();
+
+        document.getElementById('vehicleModalTitle').innerHTML = '<i class="bi bi-pencil me-2"></i>Edit Vehicle';
+        document.getElementById('vehicleId').value = vehicle.id;
+        document.getElementById('vYear').value = vehicle.year;
+        document.getElementById('vMake').value = vehicle.make;
+        document.getElementById('vModel').value = vehicle.model;
+        document.getElementById('vTrim').value = vehicle.trim || '';
+        document.getElementById('vBodyStyle').value = vehicle.bodyStyle;
+        document.getElementById('vVin').value = vehicle.vin || '';
+        document.getElementById('vStockNumber').value = vehicle.stockNumber || '';
+        document.getElementById('vExteriorColor').value = vehicle.exteriorColor;
+        document.getElementById('vInteriorColor').value = vehicle.interiorColor || '';
+        document.getElementById('vEngine').value = vehicle.engine || '';
+        document.getElementById('vTransmission').value = vehicle.transmission;
+        document.getElementById('vDrivetrain').value = vehicle.drivetrain;
+        document.getElementById('vFuelType').value = vehicle.fuelType;
+        document.getElementById('vMpgCity').value = vehicle.mpgCity || '';
+        document.getElementById('vMpgHighway').value = vehicle.mpgHighway || '';
+        document.getElementById('vMileage').value = vehicle.mileage;
+        document.getElementById('vMsrp').value = vehicle.msrp || '';
+        document.getElementById('vSalePrice').value = vehicle.salePrice;
+        document.getElementById('vSpecialPrice').value = vehicle.specialPrice || '';
+        document.getElementById('vCondition').value = vehicle.condition;
+        document.getElementById('vStatus').value = vehicle.status;
+        document.getElementById('vFeatured').checked = vehicle.featured;
+        document.getElementById('vFeatures').value = vehicle.features || '[]';
+        document.getElementById('vImages').value = vehicle.images || '[]';
+        document.getElementById('vDescription').value = vehicle.description || '';
+
+        new bootstrap.Modal(document.getElementById('vehicleModal')).show();
+      } catch (err) {
+        showToast('Failed to load vehicle', 'danger');
+      }
+    }
+
+    async function saveVehicle() {
+      const id = document.getElementById('vehicleId').value;
+      const method = id ? 'PUT' : 'POST';
+      const url = id ? `/admin/vehicles/${id}?token=${token}` : `/admin/vehicles?token=${token}`;
+
+      // Parse features - handle both JSON and newline-separated
+      let features = document.getElementById('vFeatures').value.trim();
+      if (features && !features.startsWith('[')) {
+        features = JSON.stringify(features.split('\n').filter(f => f.trim()));
+      }
+
+      // Parse images
+      let images = document.getElementById('vImages').value.trim();
+      if (images && !images.startsWith('[')) {
+        images = JSON.stringify(images.split('\n').filter(i => i.trim()));
+      }
+
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            year: parseInt(document.getElementById('vYear').value),
+            make: document.getElementById('vMake').value,
+            model: document.getElementById('vModel').value,
+            trim: document.getElementById('vTrim').value,
+            bodyStyle: document.getElementById('vBodyStyle').value,
+            vin: document.getElementById('vVin').value,
+            stockNumber: document.getElementById('vStockNumber').value,
+            exteriorColor: document.getElementById('vExteriorColor').value,
+            interiorColor: document.getElementById('vInteriorColor').value,
+            engine: document.getElementById('vEngine').value,
+            transmission: document.getElementById('vTransmission').value,
+            drivetrain: document.getElementById('vDrivetrain').value,
+            fuelType: document.getElementById('vFuelType').value,
+            mpgCity: parseInt(document.getElementById('vMpgCity').value) || null,
+            mpgHighway: parseInt(document.getElementById('vMpgHighway').value) || null,
+            mileage: parseInt(document.getElementById('vMileage').value) || 0,
+            msrp: parseFloat(document.getElementById('vMsrp').value) || 0,
+            salePrice: parseFloat(document.getElementById('vSalePrice').value),
+            specialPrice: parseFloat(document.getElementById('vSpecialPrice').value) || null,
+            condition: document.getElementById('vCondition').value,
+            status: document.getElementById('vStatus').value,
+            featured: document.getElementById('vFeatured').checked,
+            features: features || '[]',
+            images: images || '[]',
+            description: document.getElementById('vDescription').value
+          })
+        });
+
+        if (res.ok) {
+          showToast(id ? 'Vehicle updated!' : 'Vehicle added!');
+          bootstrap.Modal.getInstance(document.getElementById('vehicleModal')).hide();
+          setTimeout(() => location.reload(), 500);
+        } else {
+          const err = await res.json();
+          showToast(err.error || 'Failed to save', 'danger');
+        }
+      } catch (err) {
+        showToast('Error saving vehicle', 'danger');
+      }
+    }
+
+    async function deleteVehicle(id) {
+      if (!confirm('Are you sure you want to delete this vehicle?')) return;
+
+      try {
+        const res = await fetch(`/admin/vehicles/${id}?token=${token}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Vehicle deleted');
+          document.querySelector(`tr[data-id="${id}"]`).remove();
+          allRows = allRows.filter(row => row.dataset.id !== id);
+          filteredRows = filteredRows.filter(row => row.dataset.id !== id);
+          updatePagination();
+        } else {
+          showToast('Failed to delete', 'danger');
+        }
+      } catch (err) {
+        showToast('Error deleting', 'danger');
+      }
+    }
+
+    async function bulkDelete() {
+      if (!confirm(`Delete ${selectedRows.size} vehicles?`)) return;
+
+      try {
+        const res = await fetch(`/admin/vehicles/bulk-delete?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: Array.from(selectedRows) })
+        });
+
+        if (res.ok) {
+          showToast(`${selectedRows.size} vehicles deleted`);
+          setTimeout(() => location.reload(), 500);
+        } else {
+          showToast('Failed to delete', 'danger');
+        }
+      } catch (err) {
+        showToast('Error deleting', 'danger');
+      }
+    }
+
+    async function bulkUpdateStatus(status) {
+      try {
+        const res = await fetch(`/admin/vehicles/bulk-status?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: Array.from(selectedRows), status })
+        });
+
+        if (res.ok) {
+          showToast(`${selectedRows.size} vehicles updated`);
+          setTimeout(() => location.reload(), 500);
+        } else {
+          showToast('Failed to update', 'danger');
+        }
+      } catch (err) {
+        showToast('Error updating', 'danger');
+      }
+    }
+
+    function downloadTemplate() {
+      const headers = ['year', 'make', 'model', 'trim', 'bodyStyle', 'exteriorColor', 'interiorColor', 'mileage', 'condition', 'salePrice', 'msrp', 'specialPrice', 'engine', 'transmission', 'drivetrain', 'fuelType', 'mpgCity', 'mpgHighway', 'vin', 'stockNumber', 'features', 'images', 'description', 'status', 'featured'];
+      const example = ['2024', 'Ford', 'F-150', 'XLT', 'truck', 'Oxford White', 'Black', '0', 'new', '45999', '48999', '', '3.5L V6', 'automatic', '4wd', 'gasoline', '20', '26', '', 'F150-001', '["Leather Seats","Navigation"]', '["https://example.com/img.jpg"]', 'Great truck!', 'available', 'false'];
+
+      const csv = [headers.join(','), example.join(',')].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'vehicle_import_template.csv';
+      a.click();
+    }
+
+    async function importVehicles() {
+      const fileInput = document.getElementById('importFile');
+      if (!fileInput.files.length) {
+        showToast('Please select a file', 'warning');
+        return;
+      }
+
+      const file = fileInput.files[0];
+      const reader = new FileReader();
+
+      reader.onload = async (e) => {
+        try {
+          let vehicles = [];
+
+          if (file.name.endsWith('.csv')) {
+            const text = e.target.result;
+            const lines = text.split('\n').filter(l => l.trim());
+            const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+
+            for (let i = 1; i < lines.length; i++) {
+              const values = lines[i].split(',');
+              const vehicle = {};
+              headers.forEach((header, idx) => {
+                vehicle[header] = values[idx]?.trim() || '';
+              });
+              vehicles.push(vehicle);
+            }
+          } else {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            vehicles = XLSX.utils.sheet_to_json(sheet);
+          }
+
+          const res = await fetch(`/admin/vehicles/import?token=${token}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vehicles })
+          });
+
+          const result = await res.json();
+          if (res.ok) {
+            showToast(`Imported ${result.count} vehicles!`);
+            bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
+            setTimeout(() => location.reload(), 500);
+          } else {
+            showToast(result.error || 'Import failed', 'danger');
+          }
+        } catch (err) {
+          console.error(err);
+          showToast('Error parsing file', 'danger');
+        }
+      };
+
+      if (file.name.endsWith('.csv')) {
+        reader.readAsText(file);
+      } else {
+        reader.readAsArrayBuffer(file);
+      }
+    }
+  </script>
+</body>
+</html>

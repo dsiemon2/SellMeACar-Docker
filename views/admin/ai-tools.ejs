@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Tools - Ford Auto Sales Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    .sidebar { min-height: 100vh; background: #2c3e50; }
+    .sidebar .nav-link { color: rgba(255,255,255,0.8); padding: 0.75rem 1rem; }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active { color: #fff; background: rgba(255,255,255,0.1); }
+    .sidebar .nav-link i { margin-right: 0.5rem; }
+    .main-content { background: #f8f9fa; min-height: 100vh; }
+    .nav-divider { border-top: 1px solid rgba(255,255,255,0.2); margin: 0.5rem 0; }
+    .nav-section { color: rgba(255,255,255,0.5); font-size: 0.75rem; padding: 0.5rem 1rem; text-transform: uppercase; }
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+    .bulk-actions { display: none; background: #e3f2fd; padding: 0.75rem 1rem; border-radius: 8px; }
+    .bulk-actions.show { display: flex; }
+    .row-checkbox { cursor: pointer; }
+    tr.selected { background-color: #e3f2fd !important; }
+    .tool-card { transition: all 0.2s; }
+    .tool-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <%- include('_sidebar', { token, active: 'ai-tools' }) %>
+
+      <main class="col-md-10 ms-sm-auto main-content p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h2><i class="bi bi-tools text-primary me-2"></i>AI Tools</h2>
+          <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#toolModal" title="Add a new AI tool">
+            <i class="bi bi-plus-lg me-2"></i>Add Tool
+          </button>
+        </div>
+
+        <div class="toast-container"></div>
+
+        <div class="alert alert-info mb-4">
+          <i class="bi bi-info-circle me-2"></i>
+          AI Tools extend the capabilities of the AI assistant, allowing it to perform actions like checking inventory, scheduling appointments, or calculating payments.
+        </div>
+
+        <!-- Bulk Actions -->
+        <div class="bulk-actions mb-3" id="bulkActions">
+          <span class="me-3"><strong id="selectedCount">0</strong> selected</span>
+          <button class="btn btn-sm btn-outline-danger" onclick="bulkDelete()" data-bs-toggle="tooltip" title="Delete selected">
+            <i class="bi bi-trash"></i> Delete Selected
+          </button>
+          <button class="btn btn-sm btn-outline-secondary ms-2" onclick="bulkToggle()" data-bs-toggle="tooltip" title="Toggle selected">
+            <i class="bi bi-toggle-on"></i> Toggle Selected
+          </button>
+        </div>
+
+        <div class="card">
+          <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 40px;">
+                    <input type="checkbox" class="form-check-input" id="selectAll" data-bs-toggle="tooltip" title="Select all">
+                  </th>
+                  <th>Tool Name</th>
+                  <th>Description</th>
+                  <th>Type</th>
+                  <th>Usage</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="toolsTable">
+                <% tools.forEach(tool => { %>
+                <tr data-id="<%= tool.id %>">
+                  <td><input type="checkbox" class="form-check-input row-checkbox"></td>
+                  <td><code><%= tool.name %></code></td>
+                  <td><%= tool.description %></td>
+                  <td><span class="badge bg-<%= tool.type === 'function' ? 'primary' : 'info' %>"><%= tool.type %></span></td>
+                  <td><%= tool.usageCount || 0 %></td>
+                  <td>
+                    <span class="badge bg-<%= tool.enabled ? 'success' : 'secondary' %>">
+                      <%= tool.enabled ? 'Active' : 'Inactive' %>
+                    </span>
+                  </td>
+                  <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="editTool('<%= tool.id %>')" data-bs-toggle="tooltip" title="Edit tool">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleTool('<%= tool.id %>')" data-bs-toggle="tooltip" title="Toggle status">
+                      <i class="bi bi-toggle-on"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-info" onclick="testTool('<%= tool.id %>')" data-bs-toggle="tooltip" title="Test tool">
+                      <i class="bi bi-play"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTool('<%= tool.id %>')" data-bs-toggle="tooltip" title="Delete tool">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+            <div class="text-muted small">Showing <span id="showingStart">1</span>-<span id="showingEnd"><%= tools.length %></span> of <span id="totalRows"><%= tools.length %></span></div>
+            <nav>
+              <ul class="pagination pagination-sm mb-0" id="pagination"></ul>
+            </nav>
+            <select class="form-select form-select-sm" id="pageSize" style="width: auto;">
+              <option value="10">10 / page</option>
+              <option value="25">25 / page</option>
+              <option value="50">50 / page</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Built-in Tools Reference -->
+        <div class="card mt-4">
+          <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0"><i class="bi bi-box me-2"></i>Built-in Tools Reference</h5>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-4 mb-3">
+                <div class="card tool-card h-100">
+                  <div class="card-body">
+                    <h6><i class="bi bi-car-front text-primary me-2"></i>check_inventory</h6>
+                    <small class="text-muted">Search vehicle inventory by make, model, price range, or features</small>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-4 mb-3">
+                <div class="card tool-card h-100">
+                  <div class="card-body">
+                    <h6><i class="bi bi-calculator text-primary me-2"></i>calculate_payment</h6>
+                    <small class="text-muted">Calculate monthly payments based on price, down payment, term, and rate</small>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-4 mb-3">
+                <div class="card tool-card h-100">
+                  <div class="card-body">
+                    <h6><i class="bi bi-calendar-check text-primary me-2"></i>schedule_appointment</h6>
+                    <small class="text-muted">Schedule test drives and service appointments</small>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-4 mb-3">
+                <div class="card tool-card h-100">
+                  <div class="card-body">
+                    <h6><i class="bi bi-currency-dollar text-primary me-2"></i>get_trade_value</h6>
+                    <small class="text-muted">Estimate trade-in value for customer's current vehicle</small>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-4 mb-3">
+                <div class="card tool-card h-100">
+                  <div class="card-body">
+                    <h6><i class="bi bi-percent text-primary me-2"></i>check_financing</h6>
+                    <small class="text-muted">Check available financing options and pre-approval status</small>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-4 mb-3">
+                <div class="card tool-card h-100">
+                  <div class="card-body">
+                    <h6><i class="bi bi-telephone text-primary me-2"></i>transfer_call</h6>
+                    <small class="text-muted">Transfer customer to a human sales representative</small>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Add/Edit Tool Modal -->
+  <div class="modal fade" id="toolModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-tools me-2"></i>Add AI Tool</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="toolForm">
+            <input type="hidden" id="toolId">
+            <div class="row">
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label class="form-label">Tool Name</label>
+                  <input type="text" class="form-control" id="toolName" placeholder="check_availability" required>
+                  <div class="form-text">Use snake_case naming</div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label class="form-label">Type</label>
+                  <select class="form-select" id="toolType">
+                    <option value="function">Function</option>
+                    <option value="api">API Call</option>
+                    <option value="webhook">Webhook</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Description</label>
+              <textarea class="form-control" id="toolDescription" rows="2" required placeholder="Describe what this tool does..."></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Parameters (JSON Schema)</label>
+              <textarea class="form-control font-monospace" id="toolParameters" rows="6" placeholder='{
+  "type": "object",
+  "properties": {
+    "param1": { "type": "string", "description": "Description" }
+  },
+  "required": ["param1"]
+}'></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Handler (JavaScript function body or API endpoint)</label>
+              <textarea class="form-control font-monospace" id="toolHandler" rows="4" placeholder="return { success: true, data: params.param1 };"></textarea>
+            </div>
+            <div class="form-check mb-3">
+              <input type="checkbox" class="form-check-input" id="toolEnabled" checked>
+              <label class="form-check-label">Enabled</label>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="saveTool()" data-bs-toggle="tooltip" title="Save tool">
+            <i class="bi bi-save me-2"></i>Save
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const token = '<%= token %>';
+
+    let currentPage = 1;
+    let pageSize = 10;
+    let allRows = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+      tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
+      setupCheckboxes();
+      setupPagination();
+    });
+
+    function setupPagination() {
+      allRows = Array.from(document.querySelectorAll('#toolsTable tr'));
+      document.getElementById('pageSize').addEventListener('change', (e) => {
+        pageSize = parseInt(e.target.value);
+        currentPage = 1;
+        renderPage();
+      });
+      renderPage();
+    }
+
+    function renderPage() {
+      const start = (currentPage - 1) * pageSize;
+      const end = start + pageSize;
+      const totalPages = Math.ceil(allRows.length / pageSize);
+
+      allRows.forEach((row, i) => {
+        row.style.display = (i >= start && i < end) ? '' : 'none';
+      });
+
+      document.getElementById('showingStart').textContent = allRows.length ? start + 1 : 0;
+      document.getElementById('showingEnd').textContent = Math.min(end, allRows.length);
+      document.getElementById('totalRows').textContent = allRows.length;
+
+      const pagination = document.getElementById('pagination');
+      pagination.innerHTML = '';
+
+      if (totalPages <= 1) return;
+
+      const prevLi = document.createElement('li');
+      prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+      prevLi.innerHTML = `<a class="page-link" href="#">&laquo;</a>`;
+      prevLi.addEventListener('click', (e) => { e.preventDefault(); if (currentPage > 1) { currentPage--; renderPage(); } });
+      pagination.appendChild(prevLi);
+
+      for (let i = 1; i <= totalPages; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#">${i}</a>`;
+        li.addEventListener('click', (e) => { e.preventDefault(); currentPage = i; renderPage(); });
+        pagination.appendChild(li);
+      }
+
+      const nextLi = document.createElement('li');
+      nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+      nextLi.innerHTML = `<a class="page-link" href="#">&raquo;</a>`;
+      nextLi.addEventListener('click', (e) => { e.preventDefault(); if (currentPage < totalPages) { currentPage++; renderPage(); } });
+      pagination.appendChild(nextLi);
+    }
+
+    function showToast(message, type = 'success') {
+      const container = document.querySelector('.toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast show align-items-center text-bg-${type} border-0`;
+      toast.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function setupCheckboxes() {
+      const selectAll = document.getElementById('selectAll');
+      const checkboxes = document.querySelectorAll('.row-checkbox');
+
+      selectAll.addEventListener('change', () => {
+        checkboxes.forEach(cb => {
+          cb.checked = selectAll.checked;
+          cb.closest('tr').classList.toggle('selected', selectAll.checked);
+        });
+        updateBulkActions();
+      });
+
+      checkboxes.forEach(cb => {
+        cb.addEventListener('change', () => {
+          cb.closest('tr').classList.toggle('selected', cb.checked);
+          updateBulkActions();
+        });
+      });
+    }
+
+    function updateBulkActions() {
+      const selected = document.querySelectorAll('.row-checkbox:checked').length;
+      document.getElementById('selectedCount').textContent = selected;
+      document.getElementById('bulkActions').classList.toggle('show', selected > 0);
+    }
+
+    async function saveTool() {
+      const id = document.getElementById('toolId').value;
+      const data = {
+        name: document.getElementById('toolName').value,
+        type: document.getElementById('toolType').value,
+        description: document.getElementById('toolDescription').value,
+        parameters: document.getElementById('toolParameters').value,
+        handler: document.getElementById('toolHandler').value,
+        enabled: document.getElementById('toolEnabled').checked
+      };
+
+      try {
+        const url = id ? `/admin/ai-tools/${id}?token=${token}` : `/admin/ai-tools?token=${token}`;
+        const res = await fetch(url, {
+          method: id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (res.ok) {
+          showToast('Tool saved!');
+          location.reload();
+        }
+      } catch (err) {
+        showToast('Error saving', 'danger');
+      }
+    }
+
+    async function deleteTool(id) {
+      if (!confirm('Delete this tool?')) return;
+      try {
+        const res = await fetch(`/admin/ai-tools/${id}?token=${token}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Deleted!');
+          location.reload();
+        }
+      } catch (err) {
+        showToast('Error deleting', 'danger');
+      }
+    }
+
+    async function toggleTool(id) {
+      try {
+        const res = await fetch(`/admin/ai-tools/${id}/toggle?token=${token}`, { method: 'POST' });
+        if (res.ok) location.reload();
+      } catch (err) {
+        showToast('Error toggling', 'danger');
+      }
+    }
+
+    async function testTool(id) {
+      showToast('Testing tool...');
+      try {
+        const res = await fetch(`/admin/ai-tools/${id}/test?token=${token}`, { method: 'POST' });
+        const result = await res.json();
+        if (result.success) {
+          showToast('Tool test passed!');
+          alert('Result: ' + JSON.stringify(result.data, null, 2));
+        } else {
+          showToast('Tool test failed', 'danger');
+        }
+      } catch (err) {
+        showToast('Error testing', 'danger');
+      }
+    }
+
+    async function bulkDelete() {
+      const ids = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => cb.closest('tr').dataset.id);
+      if (!ids.length || !confirm(`Delete ${ids.length} tools?`)) return;
+      try {
+        const res = await fetch(`/admin/ai-tools/bulk-delete?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids })
+        });
+        if (res.ok) {
+          showToast('Deleted!');
+          location.reload();
+        }
+      } catch (err) {
+        showToast('Error deleting', 'danger');
+      }
+    }
+
+    async function bulkToggle() {
+      const ids = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => cb.closest('tr').dataset.id);
+      if (!ids.length) return;
+      try {
+        const res = await fetch(`/admin/ai-tools/bulk-toggle?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids })
+        });
+        if (res.ok) location.reload();
+      } catch (err) {
+        showToast('Error toggling', 'danger');
+      }
+    }
+  </script>
+</body>
+</html>

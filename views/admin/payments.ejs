@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payments - Ford Auto Sales Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    .sidebar { min-height: 100vh; background: #2c3e50; }
+    .sidebar .nav-link { color: rgba(255,255,255,0.8); padding: 0.75rem 1rem; }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active { color: #fff; background: rgba(255,255,255,0.1); }
+    .sidebar .nav-link i { margin-right: 0.5rem; }
+    .main-content { background: #f8f9fa; min-height: 100vh; }
+    .nav-divider { border-top: 1px solid rgba(255,255,255,0.2); margin: 0.5rem 0; }
+    .nav-section { color: rgba(255,255,255,0.5); font-size: 0.75rem; padding: 0.5rem 1rem; text-transform: uppercase; }
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+    .bulk-actions { display: none; background: #e3f2fd; padding: 0.75rem 1rem; border-radius: 8px; }
+    .bulk-actions.show { display: flex; }
+    .row-checkbox { cursor: pointer; }
+    tr.selected { background-color: #e3f2fd !important; }
+    .provider-card { transition: all 0.2s; cursor: pointer; }
+    .provider-card:hover { transform: translateY(-2px); }
+    .provider-card.selected { border-color: #0d6efd; background: #e7f1ff; }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <%- include('_sidebar', { token, active: 'payments' }) %>
+
+      <main class="col-md-10 ms-sm-auto main-content p-4">
+        <h2 class="mb-4"><i class="bi bi-credit-card text-primary me-2"></i>Payment Settings</h2>
+
+        <div class="toast-container"></div>
+
+        <!-- Payment Provider -->
+        <div class="card mb-4">
+          <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="bi bi-bank me-2"></i>Payment Provider</h5>
+          </div>
+          <div class="card-body">
+            <div class="row mb-4">
+              <div class="col-md-3 mb-3">
+                <div class="card provider-card <%= config?.paymentProvider === 'stripe' ? 'selected' : '' %>" onclick="selectProvider('stripe')">
+                  <div class="card-body text-center">
+                    <i class="bi bi-stripe fs-1 text-primary"></i>
+                    <h6 class="mt-2">Stripe</h6>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-3 mb-3">
+                <div class="card provider-card <%= config?.paymentProvider === 'square' ? 'selected' : '' %>" onclick="selectProvider('square')">
+                  <div class="card-body text-center">
+                    <i class="bi bi-square fs-1 text-success"></i>
+                    <h6 class="mt-2">Square</h6>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-3 mb-3">
+                <div class="card provider-card <%= config?.paymentProvider === 'paypal' ? 'selected' : '' %>" onclick="selectProvider('paypal')">
+                  <div class="card-body text-center">
+                    <i class="bi bi-paypal fs-1 text-info"></i>
+                    <h6 class="mt-2">PayPal</h6>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-3 mb-3">
+                <div class="card provider-card <%= config?.paymentProvider === 'authorize' ? 'selected' : '' %>" onclick="selectProvider('authorize')">
+                  <div class="card-body text-center">
+                    <i class="bi bi-credit-card-2-front fs-1 text-warning"></i>
+                    <h6 class="mt-2">Authorize.net</h6>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <form id="providerForm">
+              <input type="hidden" id="paymentProvider" value="<%= config?.paymentProvider || 'stripe' %>">
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">API Key / Publishable Key</label>
+                    <input type="text" class="form-control" id="paymentApiKey" value="<%= config?.paymentApiKey || '' %>">
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">Secret Key</label>
+                    <input type="password" class="form-control" id="paymentSecretKey" value="<%= config?.paymentSecretKey || '' %>">
+                  </div>
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">Webhook Secret (optional)</label>
+                    <input type="text" class="form-control" id="paymentWebhookSecret" value="<%= config?.paymentWebhookSecret || '' %>">
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="form-check mt-4">
+                    <input type="checkbox" class="form-check-input" id="paymentTestMode" <%= config?.paymentTestMode ? 'checked' : '' %>>
+                    <label class="form-check-label">Test/Sandbox Mode</label>
+                  </div>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary" data-bs-toggle="tooltip" title="Save payment provider settings">
+                <i class="bi bi-save me-2"></i>Save Provider Settings
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Deposit Settings -->
+        <div class="card mb-4">
+          <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="bi bi-cash-stack me-2"></i>Deposit Settings</h5>
+          </div>
+          <div class="card-body">
+            <form id="depositForm">
+              <div class="row">
+                <div class="col-md-4">
+                  <div class="form-check mb-3">
+                    <input type="checkbox" class="form-check-input" id="depositEnabled" <%= config?.depositEnabled ? 'checked' : '' %>>
+                    <label class="form-check-label">Enable Online Deposits</label>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="mb-3">
+                    <label class="form-label">Default Deposit Amount ($)</label>
+                    <input type="number" class="form-control" id="defaultDeposit" value="<%= config?.defaultDeposit || 500 %>" min="0" step="50">
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="mb-3">
+                    <label class="form-label">Deposit Type</label>
+                    <select class="form-select" id="depositType">
+                      <option value="fixed" <%= config?.depositType === 'fixed' ? 'selected' : '' %>>Fixed Amount</option>
+                      <option value="percentage" <%= config?.depositType === 'percentage' ? 'selected' : '' %>>Percentage of Price</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Deposit Terms & Conditions</label>
+                <textarea class="form-control" id="depositTerms" rows="3"><%= config?.depositTerms || 'Deposits are fully refundable within 48 hours. After 48 hours, deposits are applied to vehicle purchase.' %></textarea>
+              </div>
+              <button type="submit" class="btn btn-info text-white" data-bs-toggle="tooltip" title="Save deposit settings">
+                <i class="bi bi-save me-2"></i>Save Deposit Settings
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Recent Transactions -->
+        <div class="card">
+          <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>Recent Transactions</h5>
+            <button class="btn btn-sm btn-light" onclick="exportTransactions()" data-bs-toggle="tooltip" title="Export transactions">
+              <i class="bi bi-download"></i> Export
+            </button>
+          </div>
+
+          <!-- Bulk Actions -->
+          <div class="bulk-actions m-3" id="bulkActions">
+            <span class="me-3"><strong id="selectedCount">0</strong> selected</span>
+            <button class="btn btn-sm btn-outline-warning" onclick="bulkRefund()" data-bs-toggle="tooltip" title="Refund selected">
+              <i class="bi bi-arrow-counterclockwise"></i> Refund Selected
+            </button>
+          </div>
+
+          <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 40px;">
+                    <input type="checkbox" class="form-check-input" id="selectAll" data-bs-toggle="tooltip" title="Select all">
+                  </th>
+                  <th>Date</th>
+                  <th>Customer</th>
+                  <th>Vehicle</th>
+                  <th>Type</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="transactionsTable">
+                <% transactions.forEach(tx => { %>
+                <tr data-id="<%= tx.id %>">
+                  <td><input type="checkbox" class="form-check-input row-checkbox"></td>
+                  <td><%= new Date(tx.createdAt).toLocaleDateString() %></td>
+                  <td><%= tx.customerName || tx.customerEmail %></td>
+                  <td><%= tx.vehicleInfo || '-' %></td>
+                  <td><span class="badge bg-info"><%= tx.type %></span></td>
+                  <td><strong>$<%= tx.amount.toFixed(2) %></strong></td>
+                  <td>
+                    <span class="badge bg-<%= tx.status === 'completed' ? 'success' : tx.status === 'pending' ? 'warning' : tx.status === 'refunded' ? 'secondary' : 'danger' %>">
+                      <%= tx.status %>
+                    </span>
+                  </td>
+                  <td>
+                    <button class="btn btn-sm btn-outline-info" onclick="viewTransaction('<%= tx.id %>')" data-bs-toggle="tooltip" title="View details">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                    <% if (tx.status === 'completed') { %>
+                    <button class="btn btn-sm btn-outline-warning" onclick="refundTransaction('<%= tx.id %>')" data-bs-toggle="tooltip" title="Refund">
+                      <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                    <% } %>
+                  </td>
+                </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+            <div class="text-muted small">Showing <span id="showingStart">1</span>-<span id="showingEnd"><%= transactions.length %></span> of <span id="totalRows"><%= transactions.length %></span></div>
+            <nav>
+              <ul class="pagination pagination-sm mb-0" id="pagination"></ul>
+            </nav>
+            <select class="form-select form-select-sm" id="pageSize" style="width: auto;">
+              <option value="10">10 / page</option>
+              <option value="25">25 / page</option>
+              <option value="50">50 / page</option>
+            </select>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const token = '<%= token %>';
+
+    let currentPage = 1;
+    let pageSize = 10;
+    let allRows = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+      tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
+      setupCheckboxes();
+      setupPagination();
+    });
+
+    function setupPagination() {
+      allRows = Array.from(document.querySelectorAll('#transactionsTable tr'));
+      document.getElementById('pageSize').addEventListener('change', (e) => {
+        pageSize = parseInt(e.target.value);
+        currentPage = 1;
+        renderPage();
+      });
+      renderPage();
+    }
+
+    function renderPage() {
+      const start = (currentPage - 1) * pageSize;
+      const end = start + pageSize;
+      const totalPages = Math.ceil(allRows.length / pageSize);
+
+      allRows.forEach((row, i) => {
+        row.style.display = (i >= start && i < end) ? '' : 'none';
+      });
+
+      document.getElementById('showingStart').textContent = allRows.length ? start + 1 : 0;
+      document.getElementById('showingEnd').textContent = Math.min(end, allRows.length);
+      document.getElementById('totalRows').textContent = allRows.length;
+
+      const pagination = document.getElementById('pagination');
+      pagination.innerHTML = '';
+
+      if (totalPages <= 1) return;
+
+      const prevLi = document.createElement('li');
+      prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+      prevLi.innerHTML = `<a class="page-link" href="#">&laquo;</a>`;
+      prevLi.addEventListener('click', (e) => { e.preventDefault(); if (currentPage > 1) { currentPage--; renderPage(); } });
+      pagination.appendChild(prevLi);
+
+      for (let i = 1; i <= totalPages; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#">${i}</a>`;
+        li.addEventListener('click', (e) => { e.preventDefault(); currentPage = i; renderPage(); });
+        pagination.appendChild(li);
+      }
+
+      const nextLi = document.createElement('li');
+      nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+      nextLi.innerHTML = `<a class="page-link" href="#">&raquo;</a>`;
+      nextLi.addEventListener('click', (e) => { e.preventDefault(); if (currentPage < totalPages) { currentPage++; renderPage(); } });
+      pagination.appendChild(nextLi);
+    }
+
+    function showToast(message, type = 'success') {
+      const container = document.querySelector('.toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast show align-items-center text-bg-${type} border-0`;
+      toast.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function setupCheckboxes() {
+      const selectAll = document.getElementById('selectAll');
+      const checkboxes = document.querySelectorAll('.row-checkbox');
+
+      selectAll.addEventListener('change', () => {
+        checkboxes.forEach(cb => {
+          cb.checked = selectAll.checked;
+          cb.closest('tr').classList.toggle('selected', selectAll.checked);
+        });
+        updateBulkActions();
+      });
+
+      checkboxes.forEach(cb => {
+        cb.addEventListener('change', () => {
+          cb.closest('tr').classList.toggle('selected', cb.checked);
+          updateBulkActions();
+        });
+      });
+    }
+
+    function updateBulkActions() {
+      const selected = document.querySelectorAll('.row-checkbox:checked').length;
+      document.getElementById('selectedCount').textContent = selected;
+      document.getElementById('bulkActions').classList.toggle('show', selected > 0);
+    }
+
+    function selectProvider(provider) {
+      document.querySelectorAll('.provider-card').forEach(c => c.classList.remove('selected'));
+      event.currentTarget.classList.add('selected');
+      document.getElementById('paymentProvider').value = provider;
+    }
+
+    document.getElementById('providerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = {
+        paymentProvider: document.getElementById('paymentProvider').value,
+        paymentApiKey: document.getElementById('paymentApiKey').value,
+        paymentSecretKey: document.getElementById('paymentSecretKey').value,
+        paymentWebhookSecret: document.getElementById('paymentWebhookSecret').value,
+        paymentTestMode: document.getElementById('paymentTestMode').checked
+      };
+
+      try {
+        const res = await fetch(`/admin/payments/provider?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (res.ok) showToast('Provider settings saved!');
+        else showToast('Failed to save', 'danger');
+      } catch (err) {
+        showToast('Error saving', 'danger');
+      }
+    });
+
+    document.getElementById('depositForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = {
+        depositEnabled: document.getElementById('depositEnabled').checked,
+        defaultDeposit: parseFloat(document.getElementById('defaultDeposit').value),
+        depositType: document.getElementById('depositType').value,
+        depositTerms: document.getElementById('depositTerms').value
+      };
+
+      try {
+        const res = await fetch(`/admin/payments/deposit?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (res.ok) showToast('Deposit settings saved!');
+        else showToast('Failed to save', 'danger');
+      } catch (err) {
+        showToast('Error saving', 'danger');
+      }
+    });
+
+    async function refundTransaction(id) {
+      if (!confirm('Are you sure you want to refund this transaction?')) return;
+      try {
+        const res = await fetch(`/admin/payments/transactions/${id}/refund?token=${token}`, { method: 'POST' });
+        if (res.ok) {
+          showToast('Transaction refunded!');
+          location.reload();
+        } else {
+          showToast('Refund failed', 'danger');
+        }
+      } catch (err) {
+        showToast('Error processing refund', 'danger');
+      }
+    }
+
+    function viewTransaction(id) {
+      window.open(`/admin/payments/transactions/${id}?token=${token}`, '_blank');
+    }
+
+    function exportTransactions() {
+      window.location.href = `/admin/payments/transactions/export?token=${token}`;
+    }
+
+    async function bulkRefund() {
+      const ids = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => cb.closest('tr').dataset.id);
+      if (!ids.length || !confirm(`Refund ${ids.length} transactions?`)) return;
+      try {
+        const res = await fetch(`/admin/payments/transactions/bulk-refund?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids })
+        });
+        if (res.ok) {
+          showToast('Transactions refunded!');
+          location.reload();
+        }
+      } catch (err) {
+        showToast('Error refunding', 'danger');
+      }
+    }
+  </script>
+</body>
+</html>

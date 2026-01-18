@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Call Transfer - Ford Auto Sales Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    .sidebar { min-height: 100vh; background: #2c3e50; }
+    .sidebar .nav-link { color: rgba(255,255,255,0.8); padding: 0.75rem 1rem; }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active { color: #fff; background: rgba(255,255,255,0.1); }
+    .sidebar .nav-link i { margin-right: 0.5rem; }
+    .main-content { background: #f8f9fa; min-height: 100vh; }
+    .nav-divider { border-top: 1px solid rgba(255,255,255,0.2); margin: 0.5rem 0; }
+    .nav-section { color: rgba(255,255,255,0.5); font-size: 0.75rem; padding: 0.5rem 1rem; text-transform: uppercase; }
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+    .bulk-actions { display: none; background: #e3f2fd; padding: 0.75rem 1rem; border-radius: 8px; }
+    .bulk-actions.show { display: flex; }
+    .row-checkbox { cursor: pointer; }
+    tr.selected { background-color: #e3f2fd !important; }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <%- include('_sidebar', { token, active: 'call-transfer' }) %>
+
+      <main class="col-md-10 ms-sm-auto main-content p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h2><i class="bi bi-telephone-forward text-primary me-2"></i>Call Transfer Settings</h2>
+          <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#transferModal" title="Add a new transfer destination">
+            <i class="bi bi-plus-lg me-2"></i>Add Transfer Destination
+          </button>
+        </div>
+
+        <div class="toast-container"></div>
+
+        <!-- General Settings -->
+        <div class="card mb-4">
+          <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="bi bi-gear me-2"></i>General Transfer Settings</h5>
+          </div>
+          <div class="card-body">
+            <form id="generalForm">
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="form-check mb-3">
+                    <input type="checkbox" class="form-check-input" id="transferEnabled" <%= config?.transferEnabled ? 'checked' : '' %>>
+                    <label class="form-check-label">Enable Call Transfers</label>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Transfer Trigger Phrase</label>
+                    <input type="text" class="form-control" id="transferTrigger" value="<%= config?.transferTrigger || 'speak to a representative' %>">
+                    <div class="form-text">When customer says this, AI offers to transfer</div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">Default Transfer Number</label>
+                    <input type="text" class="form-control" id="defaultTransferNumber" value="<%= config?.defaultTransferNumber || '' %>" placeholder="+1234567890">
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Transfer Message</label>
+                    <input type="text" class="form-control" id="transferMessage" value="<%= config?.transferMessage || 'I will transfer you to a sales representative now. Please hold.' %>">
+                  </div>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary" data-bs-toggle="tooltip" title="Save transfer settings">
+                <i class="bi bi-save me-2"></i>Save Settings
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Transfer Destinations -->
+        <div class="card">
+          <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-people me-2"></i>Transfer Destinations</h5>
+          </div>
+
+          <!-- Bulk Actions -->
+          <div class="bulk-actions m-3" id="bulkActions">
+            <span class="me-3"><strong id="selectedCount">0</strong> selected</span>
+            <button class="btn btn-sm btn-outline-danger" onclick="bulkDelete()" data-bs-toggle="tooltip" title="Delete selected">
+              <i class="bi bi-trash"></i> Delete Selected
+            </button>
+          </div>
+
+          <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 40px;">
+                    <input type="checkbox" class="form-check-input" id="selectAll" data-bs-toggle="tooltip" title="Select all">
+                  </th>
+                  <th>Name</th>
+                  <th>Department</th>
+                  <th>Phone</th>
+                  <th>Hours</th>
+                  <th>Priority</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="destinationsTable">
+                <% destinations.forEach(d => { %>
+                <tr data-id="<%= d.id %>">
+                  <td><input type="checkbox" class="form-check-input row-checkbox"></td>
+                  <td><%= d.name %></td>
+                  <td><span class="badge bg-secondary"><%= d.department %></span></td>
+                  <td><%= d.phone %></td>
+                  <td><%= d.hours || 'Always' %></td>
+                  <td><%= d.priority %></td>
+                  <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="editDestination('<%= d.id %>')" data-bs-toggle="tooltip" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteDestination('<%= d.id %>')" data-bs-toggle="tooltip" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+            <div class="text-muted small">Showing <span id="showingStart">1</span>-<span id="showingEnd"><%= destinations.length %></span> of <span id="totalRows"><%= destinations.length %></span></div>
+            <nav>
+              <ul class="pagination pagination-sm mb-0" id="pagination"></ul>
+            </nav>
+            <select class="form-select form-select-sm" id="pageSize" style="width: auto;">
+              <option value="10">10 / page</option>
+              <option value="25">25 / page</option>
+              <option value="50">50 / page</option>
+            </select>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Add/Edit Destination Modal -->
+  <div class="modal fade" id="transferModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-telephone-forward me-2"></i>Add Transfer Destination</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="destinationForm">
+            <input type="hidden" id="destinationId">
+            <div class="mb-3">
+              <label class="form-label">Name</label>
+              <input type="text" class="form-control" id="destName" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Department</label>
+              <select class="form-select" id="destDepartment">
+                <option value="sales">Sales</option>
+                <option value="service">Service</option>
+                <option value="finance">Finance</option>
+                <option value="parts">Parts</option>
+                <option value="manager">Manager</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Phone Number</label>
+              <input type="text" class="form-control" id="destPhone" placeholder="+1234567890" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Available Hours</label>
+              <input type="text" class="form-control" id="destHours" placeholder="9AM-6PM Mon-Sat">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Priority (lower = higher priority)</label>
+              <input type="number" class="form-control" id="destPriority" value="1" min="1" max="10">
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="saveDestination()" data-bs-toggle="tooltip" title="Save destination">
+            <i class="bi bi-save me-2"></i>Save
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const token = '<%= token %>';
+
+    let currentPage = 1;
+    let pageSize = 10;
+    let allRows = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+      tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
+      setupCheckboxes();
+      setupPagination();
+    });
+
+    function setupPagination() {
+      allRows = Array.from(document.querySelectorAll('#destinationsTable tr'));
+      document.getElementById('pageSize').addEventListener('change', (e) => {
+        pageSize = parseInt(e.target.value);
+        currentPage = 1;
+        renderPage();
+      });
+      renderPage();
+    }
+
+    function renderPage() {
+      const start = (currentPage - 1) * pageSize;
+      const end = start + pageSize;
+      const totalPages = Math.ceil(allRows.length / pageSize);
+
+      allRows.forEach((row, i) => {
+        row.style.display = (i >= start && i < end) ? '' : 'none';
+      });
+
+      document.getElementById('showingStart').textContent = allRows.length ? start + 1 : 0;
+      document.getElementById('showingEnd').textContent = Math.min(end, allRows.length);
+      document.getElementById('totalRows').textContent = allRows.length;
+
+      const pagination = document.getElementById('pagination');
+      pagination.innerHTML = '';
+
+      if (totalPages <= 1) return;
+
+      const prevLi = document.createElement('li');
+      prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+      prevLi.innerHTML = `<a class="page-link" href="#">&laquo;</a>`;
+      prevLi.addEventListener('click', (e) => { e.preventDefault(); if (currentPage > 1) { currentPage--; renderPage(); } });
+      pagination.appendChild(prevLi);
+
+      for (let i = 1; i <= totalPages; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#">${i}</a>`;
+        li.addEventListener('click', (e) => { e.preventDefault(); currentPage = i; renderPage(); });
+        pagination.appendChild(li);
+      }
+
+      const nextLi = document.createElement('li');
+      nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+      nextLi.innerHTML = `<a class="page-link" href="#">&raquo;</a>`;
+      nextLi.addEventListener('click', (e) => { e.preventDefault(); if (currentPage < totalPages) { currentPage++; renderPage(); } });
+      pagination.appendChild(nextLi);
+    }
+
+    function showToast(message, type = 'success') {
+      const container = document.querySelector('.toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast show align-items-center text-bg-${type} border-0`;
+      toast.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function setupCheckboxes() {
+      const selectAll = document.getElementById('selectAll');
+      const checkboxes = document.querySelectorAll('.row-checkbox');
+
+      selectAll.addEventListener('change', () => {
+        checkboxes.forEach(cb => {
+          cb.checked = selectAll.checked;
+          cb.closest('tr').classList.toggle('selected', selectAll.checked);
+        });
+        updateBulkActions();
+      });
+
+      checkboxes.forEach(cb => {
+        cb.addEventListener('change', () => {
+          cb.closest('tr').classList.toggle('selected', cb.checked);
+          updateBulkActions();
+        });
+      });
+    }
+
+    function updateBulkActions() {
+      const selected = document.querySelectorAll('.row-checkbox:checked').length;
+      document.getElementById('selectedCount').textContent = selected;
+      document.getElementById('bulkActions').classList.toggle('show', selected > 0);
+    }
+
+    document.getElementById('generalForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = {
+        transferEnabled: document.getElementById('transferEnabled').checked,
+        transferTrigger: document.getElementById('transferTrigger').value,
+        defaultTransferNumber: document.getElementById('defaultTransferNumber').value,
+        transferMessage: document.getElementById('transferMessage').value
+      };
+
+      try {
+        const res = await fetch(`/admin/call-transfer?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (res.ok) showToast('Settings saved!');
+        else showToast('Failed to save', 'danger');
+      } catch (err) {
+        showToast('Error saving', 'danger');
+      }
+    });
+
+    async function saveDestination() {
+      const id = document.getElementById('destinationId').value;
+      const data = {
+        name: document.getElementById('destName').value,
+        department: document.getElementById('destDepartment').value,
+        phone: document.getElementById('destPhone').value,
+        hours: document.getElementById('destHours').value,
+        priority: parseInt(document.getElementById('destPriority').value)
+      };
+
+      try {
+        const url = id ? `/admin/call-transfer/destinations/${id}?token=${token}` : `/admin/call-transfer/destinations?token=${token}`;
+        const res = await fetch(url, {
+          method: id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (res.ok) {
+          showToast('Destination saved!');
+          location.reload();
+        }
+      } catch (err) {
+        showToast('Error saving', 'danger');
+      }
+    }
+
+    async function deleteDestination(id) {
+      if (!confirm('Delete this destination?')) return;
+      try {
+        const res = await fetch(`/admin/call-transfer/destinations/${id}?token=${token}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Deleted!');
+          location.reload();
+        }
+      } catch (err) {
+        showToast('Error deleting', 'danger');
+      }
+    }
+
+    async function bulkDelete() {
+      const ids = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => cb.closest('tr').dataset.id);
+      if (!ids.length || !confirm(`Delete ${ids.length} destinations?`)) return;
+      try {
+        const res = await fetch(`/admin/call-transfer/destinations/bulk-delete?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids })
+        });
+        if (res.ok) {
+          showToast('Deleted!');
+          location.reload();
+        }
+      } catch (err) {
+        showToast('Error deleting', 'danger');
+      }
+    }
+  </script>
+</body>
+</html>

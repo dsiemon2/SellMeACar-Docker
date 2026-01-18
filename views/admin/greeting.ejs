@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Greeting - Auto Sales Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    .sidebar { min-height: 100vh; background: #2c3e50; }
+    .sidebar .nav-link { color: rgba(255,255,255,0.8); padding: 0.75rem 1rem; }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active { color: #fff; background: rgba(255,255,255,0.1); }
+    .sidebar .nav-link i { margin-right: 0.5rem; }
+    .main-content { background: #f8f9fa; min-height: 100vh; }
+    .nav-divider { border-top: 1px solid rgba(255,255,255,0.2); margin: 0.5rem 0; }
+    .nav-section { color: rgba(255,255,255,0.5); font-size: 0.75rem; padding: 0.5rem 1rem; text-transform: uppercase; }
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+    .variable-tag { background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 4px; font-family: monospace; cursor: pointer; }
+    .variable-tag:hover { background: #bbdefb; }
+    .preview-box { background: #fff; border: 1px solid #dee2e6; border-radius: 8px; padding: 1.5rem; font-style: italic; color: #495057; }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <%- include('_sidebar', { token, active: 'greeting' }) %>
+
+      <main class="col-md-10 ms-sm-auto main-content p-4">
+        <h2 class="mb-4"><i class="bi bi-chat-quote text-primary me-2"></i>Greeting Configuration</h2>
+
+        <div class="toast-container"></div>
+
+        <div class="row">
+          <div class="col-md-8">
+            <div class="card mb-4">
+              <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-building me-2"></i>Dealership Info (Used in Greeting)</h5>
+              </div>
+              <div class="card-body">
+                <p class="text-muted mb-3">These details can be used in your greeting message with dynamic variables.</p>
+
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label for="dealershipName" class="form-label">Dealership Name</label>
+                    <input type="text" class="form-control" id="dealershipName" value="<%= dealership?.name || 'Our Dealership' %>" placeholder="e.g., City Ford">
+                    <div class="form-text">Use <span class="variable-tag" onclick="insertVariable('{dealership_name}')">&#123;dealership_name&#125;</span> in greeting</div>
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label for="dealershipLocation" class="form-label">Location</label>
+                    <input type="text" class="form-control" id="dealershipLocation" value="<%= dealership?.location || '' %>" placeholder="e.g., Downtown Austin">
+                    <div class="form-text">Use <span class="variable-tag" onclick="insertVariable('{location}')">&#123;location&#125;</span> in greeting</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card mb-4">
+              <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-megaphone me-2"></i>Welcome Message</h5>
+              </div>
+              <div class="card-body">
+                <p class="text-muted mb-4">This is the first message customers see when they connect to the sales assistant.</p>
+
+                <form id="greetingForm">
+                  <div class="mb-3">
+                    <label for="greeting" class="form-label">Greeting Message</label>
+                    <textarea class="form-control" id="greeting" name="greeting" rows="5"><%= greeting %></textarea>
+                    <div class="form-text">
+                      Available variables:
+                      <span class="variable-tag" onclick="insertVariable('{dealership_name}')">&#123;dealership_name&#125;</span>
+                      <span class="variable-tag" onclick="insertVariable('{location}')">&#123;location&#125;</span>
+                      <span class="variable-tag" onclick="insertVariable('{dealership_type}')">&#123;dealership_type&#125;</span>
+                    </div>
+                  </div>
+
+                  <div class="mb-4">
+                    <label class="form-label">Preview</label>
+                    <div class="preview-box" id="greetingPreview">
+                      Loading preview...
+                    </div>
+                  </div>
+
+                  <div class="mb-3">
+                    <label for="triggerPhrase" class="form-label">Trigger Phrase</label>
+                    <input type="text" class="form-control" id="triggerPhrase" name="triggerPhrase" value="<%= triggerPhrase %>">
+                    <div class="form-text">The phrase customers say to start the sales conversation (e.g., "sell me a car", "I'm looking for a vehicle").</div>
+                  </div>
+
+                  <button type="submit" class="btn btn-primary" data-bs-toggle="tooltip" title="Save greeting and trigger phrase">
+                    <i class="bi bi-save me-2"></i>Save Changes
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-4">
+            <div class="card mb-4">
+              <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-lightbulb me-2"></i>Tips</h5>
+              </div>
+              <div class="card-body">
+                <ul class="mb-0">
+                  <li class="mb-2"><strong>Be welcoming:</strong> Make customers feel like they're speaking to a friendly, knowledgeable salesperson.</li>
+                  <li class="mb-2"><strong>Personalize:</strong> Use variables like &#123;dealership_name&#125; to make it specific to your dealership.</li>
+                  <li class="mb-2"><strong>Set expectations:</strong> Let them know you can help with new/used cars, financing, trade-ins, etc.</li>
+                  <li class="mb-2"><strong>Keep it natural:</strong> 2-3 sentences is ideal for a conversational opener.</li>
+                  <li><strong>Include offers:</strong> Mention current promotions or seasonal deals if applicable.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="card mb-4">
+              <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="bi bi-code-slash me-2"></i>Example Greetings</h5>
+              </div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <strong>Standard:</strong>
+                  <p class="small text-muted mb-0">"Welcome to {dealership_name}! I'm here to help you find your perfect vehicle. Whether you're looking for a new car, considering a trade-in, or exploring financing options, I'm here to help. What brings you in today?"</p>
+                </div>
+                <div class="mb-3">
+                  <strong>Promotional:</strong>
+                  <p class="small text-muted mb-0">"Welcome to {dealership_name}! Great news - we're offering 0% APR financing on select models this month. Looking for your next ride? I'd love to help you find the perfect match. What kind of vehicle are you interested in?"</p>
+                </div>
+                <div>
+                  <strong>Trade-in Focus:</strong>
+                  <p class="small text-muted mb-0">"Hi there! Welcome to {dealership_name} in {location}. We're offering top dollar for trade-ins right now. Have you thought about upgrading your current vehicle? Tell me what you're driving and what you'd like to drive!"</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="bi bi-chat-dots me-2"></i>Topics to Address</h5>
+              </div>
+              <div class="card-body">
+                <p class="small text-muted mb-2">Your AI assistant can discuss:</p>
+                <ul class="small mb-0">
+                  <li>New & used vehicle inventory</li>
+                  <li>Financing & leasing options</li>
+                  <li>Trade-in valuations</li>
+                  <li>Test drive scheduling</li>
+                  <li>Vehicle features & specs</li>
+                  <li>Current promotions</li>
+                  <li>Warranty information</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const token = '<%= token %>';
+    const dealershipData = {
+      name: '<%= dealership?.name || "Our Dealership" %>',
+      location: '<%= dealership?.location || "" %>',
+      type: '<%= dealership?.dealershipType || "dealership" %>'
+    };
+
+    // Initialize tooltips
+    document.addEventListener('DOMContentLoaded', () => {
+      const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+      tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
+      updatePreview();
+    });
+
+    function showToast(message, type = 'success') {
+      const container = document.querySelector('.toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast show align-items-center text-bg-${type} border-0`;
+      toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">${message}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+      `;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function insertVariable(variable) {
+      const textarea = document.getElementById('greeting');
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      textarea.value = text.substring(0, start) + variable + text.substring(end);
+      textarea.focus();
+      textarea.setSelectionRange(start + variable.length, start + variable.length);
+      updatePreview();
+    }
+
+    function updatePreview() {
+      const greeting = document.getElementById('greeting').value;
+      const name = document.getElementById('dealershipName').value || dealershipData.name;
+      const location = document.getElementById('dealershipLocation').value || dealershipData.location;
+
+      let preview = greeting
+        .replace(/\{dealership_name\}/g, name)
+        .replace(/\{location\}/g, location)
+        .replace(/\{dealership_type\}/g, dealershipData.type);
+
+      document.getElementById('greetingPreview').textContent = preview || 'Enter a greeting message above...';
+    }
+
+    // Update preview on input
+    document.getElementById('greeting').addEventListener('input', updatePreview);
+    document.getElementById('dealershipName').addEventListener('input', updatePreview);
+    document.getElementById('dealershipLocation').addEventListener('input', updatePreview);
+
+    document.getElementById('greetingForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      try {
+        // Save dealership info
+        await fetch(`/admin/dealership?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: document.getElementById('dealershipName').value,
+            location: document.getElementById('dealershipLocation').value
+          })
+        });
+
+        // Save greeting
+        const res = await fetch(`/admin/greeting?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            greeting: document.getElementById('greeting').value,
+            triggerPhrase: document.getElementById('triggerPhrase').value
+          })
+        });
+
+        if (res.ok) {
+          showToast('Greeting saved successfully!');
+        } else {
+          showToast('Failed to save', 'danger');
+        }
+      } catch (err) {
+        showToast('Error saving', 'danger');
+      }
+    });
+  </script>
+</body>
+</html>

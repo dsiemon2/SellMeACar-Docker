@@ -1,0 +1,60 @@
+# Sell Me a Car
+
+AI sales training for Ford dealership scenarios.
+
+## Tech Stack
+
+### Backend
+- **Runtime:** Node.js
+- **Framework:** Express 4.19
+- **Language:** TypeScript 5.6
+- **Database:** SQLite
+- **ORM:** Prisma 5.19
+- **WebSockets:** ws 8.18.0
+- **AI:** OpenAI Realtime API
+- **Validation:** Zod 3.23
+- **Logging:** Pino 9.4
+
+### Frontend
+- **Templating:** EJS 3.1
+- **CSS Framework:** Bootstrap 5
+- **Icons:** Bootstrap Icons
+
+## Training Features
+- Realistic car buyer personas (first-time, trade-in, family, truck, budget)
+- Ford vehicle specifications and features
+- Evaluates: product knowledge, needs assessment, feature presentation, closing
+- Common objection handling scenarios
+
+## Ports
+
+| Service | Port | Description |
+|---------|------|-------------|
+| Nginx Proxy | 8082 | Main entry point |
+| App Server | 3000 | Internal - Main application |
+| Admin Server | 3001 | Internal - Admin panel |
+
+## Local Development URLs
+
+- **Landing Page:** http://localhost:8082/SellMeACar/
+- **Admin Panel:** http://localhost:8082/SellMeACar/admin?token=admin
+
+## Docker Setup
+
+```bash
+# Start all services
+docker compose up -d
+
+# Rebuild and start
+docker compose up -d --build
+
+# View logs
+docker compose logs -f
+
+# Stop all services
+docker compose down
+```
+
+## Author
+
+Daniel Siemon

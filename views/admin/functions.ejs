@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Functions - Ford Auto Sales Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    .sidebar { min-height: 100vh; background: #2c3e50; }
+    .sidebar .nav-link { color: rgba(255,255,255,0.8); padding: 0.75rem 1rem; }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active { color: #fff; background: rgba(255,255,255,0.1); }
+    .sidebar .nav-link i { margin-right: 0.5rem; }
+    .main-content { background: #f8f9fa; min-height: 100vh; }
+    .nav-divider { border-top: 1px solid rgba(255,255,255,0.2); margin: 0.5rem 0; }
+    .nav-section { color: rgba(255,255,255,0.5); font-size: 0.75rem; padding: 0.5rem 1rem; text-transform: uppercase; }
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+    .bulk-actions { display: none; background: #e3f2fd; padding: 0.75rem 1rem; border-radius: 8px; }
+    .bulk-actions.show { display: flex; }
+    .row-checkbox { cursor: pointer; }
+    tr.selected { background-color: #e3f2fd !important; }
+    .code-editor { font-family: 'Monaco', 'Menlo', monospace; font-size: 0.875rem; }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <%- include('_sidebar', { token, active: 'functions' }) %>
+
+      <main class="col-md-10 ms-sm-auto main-content p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h2><i class="bi bi-code-slash text-primary me-2"></i>Custom Functions</h2>
+          <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#functionModal" title="Create a new custom function">
+            <i class="bi bi-plus-lg me-2"></i>Create Function
+          </button>
+        </div>
+
+        <div class="toast-container"></div>
+
+        <div class="alert alert-warning mb-4">
+          <i class="bi bi-exclamation-triangle me-2"></i>
+          <strong>Advanced:</strong> Custom functions allow you to extend the AI's capabilities with custom JavaScript code. Use with caution.
+        </div>
+
+        <!-- Bulk Actions -->
+        <div class="bulk-actions mb-3" id="bulkActions">
+          <span class="me-3"><strong id="selectedCount">0</strong> selected</span>
+          <button class="btn btn-sm btn-outline-danger" onclick="bulkDelete()" data-bs-toggle="tooltip" title="Delete selected">
+            <i class="bi bi-trash"></i> Delete Selected
+          </button>
+        </div>
+
+        <div class="card">
+          <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 40px;">
+                    <input type="checkbox" class="form-check-input" id="selectAll" data-bs-toggle="tooltip" title="Select all">
+                  </th>
+                  <th>Function Name</th>
+                  <th>Description</th>
+                  <th>Trigger</th>
+                  <th>Calls</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="functionsTable">
+                <% functions.forEach(fn => { %>
+                <tr data-id="<%= fn.id %>">
+                  <td><input type="checkbox" class="form-check-input row-checkbox"></td>
+                  <td><code><%= fn.name %></code></td>
+                  <td><%= fn.description %></td>
+                  <td><span class="badge bg-info"><%= fn.trigger %></span></td>
+                  <td><%= fn.callCount || 0 %></td>
+                  <td>
+                    <span class="badge bg-<%= fn.enabled ? 'success' : 'secondary' %>">
+                      <%= fn.enabled ? 'Active' : 'Inactive' %>
+                    </span>
+                  </td>
+                  <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="editFunction('<%= fn.id %>')" data-bs-toggle="tooltip" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-info" onclick="testFunction('<%= fn.id %>')" data-bs-toggle="tooltip" title="Test">
+                      <i class="bi bi-play"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleFunction('<%= fn.id %>')" data-bs-toggle="tooltip" title="Toggle">
+                      <i class="bi bi-toggle-on"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteFunction('<%= fn.id %>')" data-bs-toggle="tooltip" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+            <div class="text-muted small">Showing <span id="showingStart">1</span>-<span id="showingEnd"><%= functions.length %></span> of <span id="totalRows"><%= functions.length %></span></div>
+            <nav>
+              <ul class="pagination pagination-sm mb-0" id="pagination"></ul>
+            </nav>
+            <select class="form-select form-select-sm" id="pageSize" style="width: auto;">
+              <option value="10">10 / page</option>
+              <option value="25">25 / page</option>
+              <option value="50">50 / page</option>
+            </select>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Add/Edit Function Modal -->
+  <div class="modal fade" id="functionModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-code-slash me-2"></i>Create Function</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="functionForm">
+            <input type="hidden" id="functionId">
+            <div class="row">
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label class="form-label">Function Name</label>
+                  <input type="text" class="form-control" id="functionName" placeholder="calculate_discount" required>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label class="form-label">Trigger</label>
+                  <select class="form-select" id="functionTrigger">
+                    <option value="manual">Manual (AI calls)</option>
+                    <option value="session_start">Session Start</option>
+                    <option value="session_end">Session End</option>
+                    <option value="message_received">Message Received</option>
+                    <option value="sale_made">Sale Made</option>
+                    <option value="scheduled">Scheduled</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Description</label>
+              <input type="text" class="form-control" id="functionDescription" placeholder="Calculate discount based on customer history">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Input Parameters (JSON)</label>
+              <textarea class="form-control code-editor" id="functionParams" rows="3" placeholder='{
+  "customerId": "string",
+  "vehiclePrice": "number"
+}'></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Function Code (JavaScript)</label>
+              <textarea class="form-control code-editor" id="functionCode" rows="10" placeholder="// Available: params, context, prisma
+// Return an object with the result
+
+const { customerId, vehiclePrice } = params;
+
+// Your logic here
+const discount = vehiclePrice * 0.05;
+
+return {
+  success: true,
+  discount: discount,
+  message: `$${discount.toFixed(2)} discount applied`
+};"></textarea>
+            </div>
+            <div class="form-check mb-3">
+              <input type="checkbox" class="form-check-input" id="functionEnabled" checked>
+              <label class="form-check-label">Enabled</label>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-outline-info" onclick="validateFunction()" data-bs-toggle="tooltip" title="Validate function syntax">
+            <i class="bi bi-check-circle me-2"></i>Validate
+          </button>
+          <button type="button" class="btn btn-primary" onclick="saveFunction()" data-bs-toggle="tooltip" title="Save function">
+            <i class="bi bi-save me-2"></i>Save
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const token = '<%= token %>';
+
+    let currentPage = 1;
+    let pageSize = 10;
+    let allRows = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+      tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
+      setupCheckboxes();
+      setupPagination();
+    });
+
+    function setupPagination() {
+      allRows = Array.from(document.querySelectorAll('#functionsTable tr'));
+      document.getElementById('pageSize').addEventListener('change', (e) => {
+        pageSize = parseInt(e.target.value);
+        currentPage = 1;
+        renderPage();
+      });
+      renderPage();
+    }
+
+    function renderPage() {
+      const start = (currentPage - 1) * pageSize;
+      const end = start + pageSize;
+      const totalPages = Math.ceil(allRows.length / pageSize);
+
+      allRows.forEach((row, i) => {
+        row.style.display = (i >= start && i < end) ? '' : 'none';
+      });
+
+      document.getElementById('showingStart').textContent = allRows.length ? start + 1 : 0;
+      document.getElementById('showingEnd').textContent = Math.min(end, allRows.length);
+      document.getElementById('totalRows').textContent = allRows.length;
+
+      const pagination = document.getElementById('pagination');
+      pagination.innerHTML = '';
+
+      if (totalPages <= 1) return;
+
+      const prevLi = document.createElement('li');
+      prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+      prevLi.innerHTML = `<a class="page-link" href="#">&laquo;</a>`;
+      prevLi.addEventListener('click', (e) => { e.preventDefault(); if (currentPage > 1) { currentPage--; renderPage(); } });
+      pagination.appendChild(prevLi);
+
+      for (let i = 1; i <= totalPages; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#">${i}</a>`;
+        li.addEventListener('click', (e) => { e.preventDefault(); currentPage = i; renderPage(); });
+        pagination.appendChild(li);
+      }
+
+      const nextLi = document.createElement('li');
+      nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+      nextLi.innerHTML = `<a class="page-link" href="#">&raquo;</a>`;
+      nextLi.addEventListener('click', (e) => { e.preventDefault(); if (currentPage < totalPages) { currentPage++; renderPage(); } });
+      pagination.appendChild(nextLi);
+    }
+
+    function showToast(message, type = 'success') {
+      const container = document.querySelector('.toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast show align-items-center text-bg-${type} border-0`;
+      toast.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function setupCheckboxes() {
+      const selectAll = document.getElementById('selectAll');
+      const checkboxes = document.querySelectorAll('.row-checkbox');
+
+      selectAll.addEventListener('change', () => {
+        checkboxes.forEach(cb => {
+          cb.checked = selectAll.checked;
+          cb.closest('tr').classList.toggle('selected', selectAll.checked);
+        });
+        updateBulkActions();
+      });
+
+      checkboxes.forEach(cb => {
+        cb.addEventListener('change', () => {
+          cb.closest('tr').classList.toggle('selected', cb.checked);
+          updateBulkActions();
+        });
+      });
+    }
+
+    function updateBulkActions() {
+      const selected = document.querySelectorAll('.row-checkbox:checked').length;
+      document.getElementById('selectedCount').textContent = selected;
+      document.getElementById('bulkActions').classList.toggle('show', selected > 0);
+    }
+
+    function validateFunction() {
+      const code = document.getElementById('functionCode').value;
+      try {
+        new Function('params', 'context', 'prisma', code);
+        showToast('Syntax is valid!');
+      } catch (err) {
+        showToast('Syntax error: ' + err.message, 'danger');
+      }
+    }
+
+    async function saveFunction() {
+      const id = document.getElementById('functionId').value;
+      const data = {
+        name: document.getElementById('functionName').value,
+        trigger: document.getElementById('functionTrigger').value,
+        description: document.getElementById('functionDescription').value,
+        params: document.getElementById('functionParams').value,
+        code: document.getElementById('functionCode').value,
+        enabled: document.getElementById('functionEnabled').checked
+      };
+
+      try {
+        const url = id ? `/admin/functions/${id}?token=${token}` : `/admin/functions?token=${token}`;
+        const res = await fetch(url, {
+          method: id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (res.ok) {
+          showToast('Function saved!');
+          location.reload();
+        }
+      } catch (err) {
+        showToast('Error saving', 'danger');
+      }
+    }
+
+    async function deleteFunction(id) {
+      if (!confirm('Delete this function?')) return;
+      try {
+        const res = await fetch(`/admin/functions/${id}?token=${token}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Deleted!');
+          location.reload();
+        }
+      } catch (err) {
+        showToast('Error deleting', 'danger');
+      }
+    }
+
+    async function toggleFunction(id) {
+      try {
+        const res = await fetch(`/admin/functions/${id}/toggle?token=${token}`, { method: 'POST' });
+        if (res.ok) location.reload();
+      } catch (err) {
+        showToast('Error toggling', 'danger');
+      }
+    }
+
+    async function testFunction(id) {
+      const testParams = prompt('Enter test parameters (JSON):', '{}');
+      if (testParams === null) return;
+
+      try {
+        const res = await fetch(`/admin/functions/${id}/test?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ params: JSON.parse(testParams) })
+        });
+        const result = await res.json();
+        alert('Result:\n' + JSON.stringify(result, null, 2));
+      } catch (err) {
+        showToast('Error testing: ' + err.message, 'danger');
+      }
+    }
+
+    async function bulkDelete() {
+      const ids = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => cb.closest('tr').dataset.id);
+      if (!ids.length || !confirm(`Delete ${ids.length} functions?`)) return;
+      try {
+        const res = await fetch(`/admin/functions/bulk-delete?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids })
+        });
+        if (res.ok) {
+          showToast('Deleted!');
+          location.reload();
+        }
+      } catch (err) {
+        showToast('Error deleting', 'danger');
+      }
+    }
+  </script>
+</body>
+</html>

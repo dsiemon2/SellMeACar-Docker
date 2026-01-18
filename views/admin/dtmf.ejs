@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DTMF Menu - Ford Auto Sales Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    .sidebar { min-height: 100vh; background: #2c3e50; }
+    .sidebar .nav-link { color: rgba(255,255,255,0.8); padding: 0.75rem 1rem; }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active { color: #fff; background: rgba(255,255,255,0.1); }
+    .sidebar .nav-link i { margin-right: 0.5rem; }
+    .main-content { background: #f8f9fa; min-height: 100vh; }
+    .nav-divider { border-top: 1px solid rgba(255,255,255,0.2); margin: 0.5rem 0; }
+    .nav-section { color: rgba(255,255,255,0.5); font-size: 0.75rem; padding: 0.5rem 1rem; text-transform: uppercase; }
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+    .dtmf-key { width: 50px; height: 50px; font-size: 1.5rem; font-weight: bold; }
+    .bulk-actions { display: none; background: #e3f2fd; padding: 0.75rem 1rem; border-radius: 8px; }
+    .bulk-actions.show { display: flex; }
+    .row-checkbox { cursor: pointer; }
+    tr.selected { background-color: #e3f2fd !important; }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <%- include('_sidebar', { token, active: 'dtmf' }) %>
+
+      <main class="col-md-10 ms-sm-auto main-content p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h2><i class="bi bi-grid-3x3 text-primary me-2"></i>DTMF Menu Configuration</h2>
+          <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#dtmfModal" title="Add a new DTMF menu option">
+            <i class="bi bi-plus-lg me-2"></i>Add Menu Option
+          </button>
+        </div>
+
+        <div class="toast-container"></div>
+
+        <!-- DTMF Settings -->
+        <div class="card mb-4">
+          <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="bi bi-gear me-2"></i>IVR Settings</h5>
+          </div>
+          <div class="card-body">
+            <form id="dtmfSettingsForm">
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="form-check mb-3">
+                    <input type="checkbox" class="form-check-input" id="dtmfEnabled" <%= config?.dtmfEnabled ? 'checked' : '' %>>
+                    <label class="form-check-label">Enable DTMF Menu</label>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Welcome Message</label>
+                    <textarea class="form-control" id="dtmfWelcome" rows="2"><%= config?.dtmfWelcome || 'Welcome to Ford Auto Sales. Please listen to the following options.' %></textarea>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">Invalid Input Message</label>
+                    <input type="text" class="form-control" id="dtmfInvalid" value="<%= config?.dtmfInvalid || 'Sorry, that option is not valid. Please try again.' %>">
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label">Timeout (seconds)</label>
+                    <input type="number" class="form-control" id="dtmfTimeout" value="<%= config?.dtmfTimeout || 10 %>" min="5" max="30">
+                  </div>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary" data-bs-toggle="tooltip" title="Save DTMF settings">
+                <i class="bi bi-save me-2"></i>Save Settings
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Menu Options -->
+        <div class="card">
+          <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="bi bi-list-ol me-2"></i>Menu Options</h5>
+          </div>
+
+          <!-- Bulk Actions -->
+          <div class="bulk-actions m-3" id="bulkActions">
+            <span class="me-3"><strong id="selectedCount">0</strong> selected</span>
+            <button class="btn btn-sm btn-outline-danger" onclick="bulkDelete()" data-bs-toggle="tooltip" title="Delete selected">
+              <i class="bi bi-trash"></i> Delete Selected
+            </button>
+          </div>
+
+          <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 40px;">
+                    <input type="checkbox" class="form-check-input" id="selectAll" data-bs-toggle="tooltip" title="Select all">
+                  </th>
+                  <th style="width: 80px;">Key</th>
+                  <th>Description</th>
+                  <th>Action</th>
+                  <th>Target</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="menuTable">
+                <% menuOptions.forEach(opt => { %>
+                <tr data-id="<%= opt.id %>">
+                  <td><input type="checkbox" class="form-check-input row-checkbox"></td>
+                  <td><span class="badge bg-dark dtmf-key"><%= opt.key %></span></td>
+                  <td><%= opt.description %></td>
+                  <td><span class="badge bg-secondary"><%= opt.action %></span></td>
+                  <td><%= opt.target || '-' %></td>
+                  <td>
+                    <span class="badge bg-<%= opt.enabled ? 'success' : 'secondary' %>">
+                      <%= opt.enabled ? 'Active' : 'Inactive' %>
+                    </span>
+                  </td>
+                  <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="editOption('<%= opt.id %>')" data-bs-toggle="tooltip" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleOption('<%= opt.id %>')" data-bs-toggle="tooltip" title="Toggle">
+                      <i class="bi bi-toggle-on"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteOption('<%= opt.id %>')" data-bs-toggle="tooltip" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+            <div class="text-muted small">Showing <span id="showingStart">1</span>-<span id="showingEnd"><%= menuOptions.length %></span> of <span id="totalRows"><%= menuOptions.length %></span></div>
+            <nav>
+              <ul class="pagination pagination-sm mb-0" id="pagination"></ul>
+            </nav>
+            <select class="form-select form-select-sm" id="pageSize" style="width: auto;">
+              <option value="10">10 / page</option>
+              <option value="25">25 / page</option>
+              <option value="50">50 / page</option>
+            </select>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Add/Edit Menu Option Modal -->
+  <div class="modal fade" id="dtmfModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-grid-3x3 me-2"></i>Add Menu Option</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="optionForm">
+            <input type="hidden" id="optionId">
+            <div class="mb-3">
+              <label class="form-label">DTMF Key</label>
+              <select class="form-select" id="optionKey" required>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+                <option value="9">9</option>
+                <option value="0">0</option>
+                <option value="*">* (Star)</option>
+                <option value="#"># (Pound)</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Description (spoken to caller)</label>
+              <input type="text" class="form-control" id="optionDescription" placeholder="Press 1 for Sales" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Action</label>
+              <select class="form-select" id="optionAction" onchange="updateTargetField()">
+                <option value="transfer">Transfer to Number</option>
+                <option value="ai_agent">Connect to AI Agent</option>
+                <option value="voicemail">Leave Voicemail</option>
+                <option value="submenu">Go to Submenu</option>
+                <option value="repeat">Repeat Menu</option>
+                <option value="callback">Request Callback</option>
+              </select>
+            </div>
+            <div class="mb-3" id="targetGroup">
+              <label class="form-label">Target (phone/agent/submenu)</label>
+              <input type="text" class="form-control" id="optionTarget" placeholder="+1234567890">
+            </div>
+            <div class="form-check mb-3">
+              <input type="checkbox" class="form-check-input" id="optionEnabled" checked>
+              <label class="form-check-label">Enabled</label>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="saveOption()" data-bs-toggle="tooltip" title="Save menu option">
+            <i class="bi bi-save me-2"></i>Save
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const token = '<%= token %>';
+
+    let currentPage = 1;
+    let pageSize = 10;
+    let allRows = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+      tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
+      setupCheckboxes();
+      setupPagination();
+    });
+
+    function setupPagination() {
+      allRows = Array.from(document.querySelectorAll('#menuTable tr'));
+      document.getElementById('pageSize').addEventListener('change', (e) => {
+        pageSize = parseInt(e.target.value);
+        currentPage = 1;
+        renderPage();
+      });
+      renderPage();
+    }
+
+    function renderPage() {
+      const start = (currentPage - 1) * pageSize;
+      const end = start + pageSize;
+      const totalPages = Math.ceil(allRows.length / pageSize);
+
+      allRows.forEach((row, i) => {
+        row.style.display = (i >= start && i < end) ? '' : 'none';
+      });
+
+      document.getElementById('showingStart').textContent = allRows.length ? start + 1 : 0;
+      document.getElementById('showingEnd').textContent = Math.min(end, allRows.length);
+      document.getElementById('totalRows').textContent = allRows.length;
+
+      const pagination = document.getElementById('pagination');
+      pagination.innerHTML = '';
+
+      if (totalPages <= 1) return;
+
+      const prevLi = document.createElement('li');
+      prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+      prevLi.innerHTML = `<a class="page-link" href="#">&laquo;</a>`;
+      prevLi.addEventListener('click', (e) => { e.preventDefault(); if (currentPage > 1) { currentPage--; renderPage(); } });
+      pagination.appendChild(prevLi);
+
+      for (let i = 1; i <= totalPages; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#">${i}</a>`;
+        li.addEventListener('click', (e) => { e.preventDefault(); currentPage = i; renderPage(); });
+        pagination.appendChild(li);
+      }
+
+      const nextLi = document.createElement('li');
+      nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+      nextLi.innerHTML = `<a class="page-link" href="#">&raquo;</a>`;
+      nextLi.addEventListener('click', (e) => { e.preventDefault(); if (currentPage < totalPages) { currentPage++; renderPage(); } });
+      pagination.appendChild(nextLi);
+    }
+
+    function showToast(message, type = 'success') {
+      const container = document.querySelector('.toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast show align-items-center text-bg-${type} border-0`;
+      toast.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function setupCheckboxes() {
+      const selectAll = document.getElementById('selectAll');
+      const checkboxes = document.querySelectorAll('.row-checkbox');
+
+      selectAll.addEventListener('change', () => {
+        checkboxes.forEach(cb => {
+          cb.checked = selectAll.checked;
+          cb.closest('tr').classList.toggle('selected', selectAll.checked);
+        });
+        updateBulkActions();
+      });
+
+      checkboxes.forEach(cb => {
+        cb.addEventListener('change', () => {
+          cb.closest('tr').classList.toggle('selected', cb.checked);
+          updateBulkActions();
+        });
+      });
+    }
+
+    function updateBulkActions() {
+      const selected = document.querySelectorAll('.row-checkbox:checked').length;
+      document.getElementById('selectedCount').textContent = selected;
+      document.getElementById('bulkActions').classList.toggle('show', selected > 0);
+    }
+
+    function updateTargetField() {
+      const action = document.getElementById('optionAction').value;
+      const targetGroup = document.getElementById('targetGroup');
+      const targetInput = document.getElementById('optionTarget');
+
+      if (action === 'repeat') {
+        targetGroup.style.display = 'none';
+      } else {
+        targetGroup.style.display = 'block';
+        switch(action) {
+          case 'transfer': targetInput.placeholder = '+1234567890'; break;
+          case 'ai_agent': targetInput.placeholder = 'sales_agent'; break;
+          case 'submenu': targetInput.placeholder = 'service_menu'; break;
+          case 'voicemail': targetInput.placeholder = 'sales@dealer.com'; break;
+          case 'callback': targetInput.placeholder = 'callback_queue'; break;
+        }
+      }
+    }
+
+    document.getElementById('dtmfSettingsForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = {
+        dtmfEnabled: document.getElementById('dtmfEnabled').checked,
+        dtmfWelcome: document.getElementById('dtmfWelcome').value,
+        dtmfInvalid: document.getElementById('dtmfInvalid').value,
+        dtmfTimeout: parseInt(document.getElementById('dtmfTimeout').value)
+      };
+
+      try {
+        const res = await fetch(`/admin/dtmf?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (res.ok) showToast('Settings saved!');
+        else showToast('Failed to save', 'danger');
+      } catch (err) {
+        showToast('Error saving', 'danger');
+      }
+    });
+
+    async function saveOption() {
+      const id = document.getElementById('optionId').value;
+      const data = {
+        key: document.getElementById('optionKey').value,
+        description: document.getElementById('optionDescription').value,
+        action: document.getElementById('optionAction').value,
+        target: document.getElementById('optionTarget').value,
+        enabled: document.getElementById('optionEnabled').checked
+      };
+
+      try {
+        const url = id ? `/admin/dtmf/options/${id}?token=${token}` : `/admin/dtmf/options?token=${token}`;
+        const res = await fetch(url, {
+          method: id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (res.ok) {
+          showToast('Option saved!');
+          location.reload();
+        }
+      } catch (err) {
+        showToast('Error saving', 'danger');
+      }
+    }
+
+    async function deleteOption(id) {
+      if (!confirm('Delete this menu option?')) return;
+      try {
+        const res = await fetch(`/admin/dtmf/options/${id}?token=${token}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Deleted!');
+          location.reload();
+        }
+      } catch (err) {
+        showToast('Error deleting', 'danger');
+      }
+    }
+
+    async function toggleOption(id) {
+      try {
+        const res = await fetch(`/admin/dtmf/options/${id}/toggle?token=${token}`, { method: 'POST' });
+        if (res.ok) location.reload();
+      } catch (err) {
+        showToast('Error toggling', 'danger');
+      }
+    }
+
+    async function bulkDelete() {
+      const ids = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => cb.closest('tr').dataset.id);
+      if (!ids.length || !confirm(`Delete ${ids.length} options?`)) return;
+      try {
+        const res = await fetch(`/admin/dtmf/options/bulk-delete?token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids })
+        });
+        if (res.ok) {
+          showToast('Deleted!');
+          location.reload();
+        }
+      } catch (err) {
+        showToast('Error deleting', 'danger');
+      }
+    }
+  </script>
+</body>
+</html>
